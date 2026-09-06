@@ -139,8 +139,10 @@ public class TextDecoder
         } while (!lastWord);
 
         int byteLength = pos - address;
-        int currentAlphabet = 0; // 0=A0, 1=A1, 2=A2
-        bool shiftLock = false;  // V1–2 shift-lock state
+        int currentAlphabet = 0;  // 0=A0, 1=A1, 2=A2
+        // V1–2 shift-lock: the alphabet to revert to after each output
+        // character. -1 means no lock active (revert to A0).
+        int lockedAlphabet = -1;
 
         for (int i = 0; i < zchars.Count; i++)
         {
@@ -150,7 +152,7 @@ public class TextDecoder
             if (zc == 0)
             {
                 sb.Append(' ');
-                if (!shiftLock) currentAlphabet = 0;
+                RevertAlphabet(ref currentAlphabet, lockedAlphabet);
                 continue;
             }
 
@@ -169,7 +171,7 @@ public class TextDecoder
                 int abbrAddress = _memory.ReadWord(tableEntry) * 2;
                 var (abbrText, _) = DecodeZStringInternal(abbrAddress, isAbbreviation: true);
                 sb.Append(abbrText);
-                if (!shiftLock) currentAlphabet = 0;
+                RevertAlphabet(ref currentAlphabet, lockedAlphabet);
                 continue;
             }
 
@@ -178,13 +180,12 @@ public class TextDecoder
             // V3+:  z-chars 4,5 = single-shift (2,3 are abbreviation triggers).
             if (_version <= 2 && (zc == 2 || zc == 3))
             {
-                // ZSpec S3.4 — V1–2 single-shift: 2 = next, 3 = previous.
-                int baseAlphabet = shiftLock ? currentAlphabet : 0;
+                // Single-shift from the current base (locked or A0).
+                int baseAlphabet = lockedAlphabet >= 0 ? lockedAlphabet : 0;
                 if (zc == 2)
                     currentAlphabet = (baseAlphabet + 1) % 3;
                 else
                     currentAlphabet = (baseAlphabet + 2) % 3;
-                // Single shift — don't set shiftLock.
                 continue;
             }
 
@@ -193,12 +194,12 @@ public class TextDecoder
                 if (_version <= 2)
                 {
                     // ZSpec11 "Encoded text" — V1–2: 4/5 are shift-locks.
-                    int baseAlphabet = shiftLock ? currentAlphabet : 0;
+                    int baseAlphabet = lockedAlphabet >= 0 ? lockedAlphabet : 0;
                     if (zc == 4)
                         currentAlphabet = (baseAlphabet + 1) % 3;
                     else
                         currentAlphabet = (baseAlphabet + 2) % 3;
-                    shiftLock = true;
+                    lockedAlphabet = currentAlphabet;
                 }
                 else
                 {
@@ -219,7 +220,7 @@ public class TextDecoder
                 byte lo = zchars[++i];
                 int zsciiCode = (hi << 5) | lo;
                 sb.Append((char)zsciiCode);
-                if (!shiftLock) currentAlphabet = 0;
+                RevertAlphabet(ref currentAlphabet, lockedAlphabet);
                 continue;
             }
 
@@ -234,25 +235,29 @@ public class TextDecoder
                     _ => _a0,
                 };
                 int index = zc - 6;
-                // A2 slot 0 is the ZSCII escape (handled above for zc==6).
-                // For zc 7–31 in A2, index 1–25 are the actual characters.
                 sb.Append(table[index]);
-                if (!shiftLock) currentAlphabet = 0;
+                RevertAlphabet(ref currentAlphabet, lockedAlphabet);
                 continue;
             }
 
-            // Z-chars 1–5 for V1 (only z-char 1 is abbreviation in V2,
-            // none in V1). Remaining z-chars 1–3 not handled as abbreviations
-            // in V1 are treated as newline (z-char 1 in V1).
             if (_version == 1 && zc == 1)
             {
                 sb.Append('\n');
-                if (!shiftLock) currentAlphabet = 0;
+                RevertAlphabet(ref currentAlphabet, lockedAlphabet);
                 continue;
             }
         }
 
         return (sb.ToString(), byteLength);
+    }
+
+    /// <summary>
+    /// After outputting a character, revert to the locked alphabet (V1–2
+    /// shift-lock) or to A0 (no lock / V3+).
+    /// </summary>
+    private static void RevertAlphabet(ref int currentAlphabet, int lockedAlphabet)
+    {
+        currentAlphabet = lockedAlphabet >= 0 ? lockedAlphabet : 0;
     }
 
     /// <summary>

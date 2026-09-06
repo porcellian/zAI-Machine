@@ -311,24 +311,113 @@ public class TextDecoderTests
     #region V1–2 Shift Semantics
 
     [Fact]
-    public void V2_ShiftChars2And3_SingleShift()
+    public void V2_SingleShift_FromA0_ToA1()
     {
-        // V1–2: z-chars 2,3 are single-shifts (not abbreviations).
-        // 2 = shift to next alphabet (A0→A1), 3 = shift to previous (A0→A2).
-        // Wait — actually in V1-2, 2=shift-A1 (next), 3=shift-A2 (prev).
-        // But the spec says 4,5 are shift-locks in V1-2.
-        // Let me re-read the task:
-        // "Z-chars 4, 5: shift to A1, A2 (single-shift V3+; shift-lock V1–2)"
-        // So in V1-2: 2,3 are single-shift, 4,5 are shift-lock.
-        // But the task only asks for 4,5 handling and V3+ single-shift.
-        // The deliverables don't mention V1-2 z-chars 2,3 as shifts.
-        // Let me not test V1-2 shift semantics beyond what the code handles.
-        // Actually my code only handles V1-2 differently for z-chars 4,5 (shift-lock).
-        // Z-chars 2,3 in V1-2 should be single-shifts, but my current code
-        // treats them as abbreviation triggers... Let me fix this.
+        // V2: z-char 2 = single-shift to next alphabet (A0→A1).
+        // Z-chars: [2, 6, 7] → shift-A1, A1[0]='A', then back to A0, A0[1]='b'
+        // Word: 0x8000 | (2<<10)|(6<<5)|7 = 0x80C7 — wait, that encodes wrong.
+        // Actually: (2<<10)|(6<<5)|7 = 2048+192+7 = 2247 = 0x08C7
+        // With end bit: 0x88C7
+        var data = new byte[0x48];
+        data[0] = 2; // V2
+        data[0x0E] = 0x00; data[0x0F] = 0x48;
+        data[0x40] = 0x88; data[0x41] = 0xC7;
 
-        // For now, skip this test — V1-2 shift handling needs fixes first.
-        // This will be addressed below.
+        var mem = new Memory();
+        mem.LoadStory(data);
+        var decoder = new TextDecoder(mem, 2, 0);
+
+        var (text, _) = decoder.DecodeZString(0x40);
+        Assert.Equal("Ab", text);
+    }
+
+    [Fact]
+    public void V2_SingleShift_RevertsAfterOneChar()
+    {
+        // V2: z-char 2 shifts to A1 for exactly one character, then reverts.
+        // Z-chars: [2, 6, 6, 5, 5, 5] → shift-A1, A1[0]='A', back to A0, A0[0]='a', pad
+        // Word 1: (2<<10)|(6<<5)|6 = 0x08C6
+        // Word 2: 0x8000|(5<<10)|(5<<5)|5 = 0x94A5
+        var data = new byte[0x48];
+        data[0] = 2;
+        data[0x0E] = 0x00; data[0x0F] = 0x48;
+        data[0x40] = 0x08; data[0x41] = 0xC6;
+        data[0x42] = 0x94; data[0x43] = 0xA5;
+
+        var mem = new Memory();
+        mem.LoadStory(data);
+        var decoder = new TextDecoder(mem, 2, 0);
+
+        var (text, _) = decoder.DecodeZString(0x40);
+        Assert.Equal("Aa", text);
+    }
+
+    [Fact]
+    public void V2_ShiftLockThenSingleShift_RevertsToLockedAlphabet()
+    {
+        // The key bug scenario: shift-lock to A1 (z-char 4), then single-shift
+        // to A2 (z-char 3), should revert to A1 (not A2 or A0) after one char.
+        //
+        // Z-chars: [4, 6, 3, 7, 8] → lock-A1, A1[0]='A', shift-A2, A2[1]='\n', A1[2]='C'
+        //
+        // 4 = shift-lock to next (A0→A1), lockedAlphabet=1
+        // 6 in A1 = 'A', revert → stays A1 (locked)
+        // 3 = single-shift prev from A1 → (1+2)%3 = A0...
+        // Wait: 3 = shift to *previous* alphabet. From A1, previous = A0.
+        // Let me use: lock to A1 (4), print from A1, single-shift next from A1 (2) → A2,
+        // print from A2, then should revert to A1.
+        //
+        // Z-chars: [4, 6, 2, 8, 7, 5, 5, 5, 5]
+        //   4 → lock A1 (lockedAlphabet=1, currentAlphabet=1)
+        //   6 in A1 → 'A', revert to locked A1
+        //   2 → single-shift next from A1 → (1+1)%3 = A2
+        //   8 in A2 → A2[8-6] = A2[2] = '0'
+        //   revert to locked A1
+        //   7 in A1 → A1[7-6] = A1[1] = 'B'
+        //   pad...
+        //
+        // Word 1: (4<<10)|(6<<5)|2 = 4096+192+2 = 0x10C2
+        // Word 2: (8<<10)|(7<<5)|5 = 8192+224+5 = 0x20E5
+        // Word 3: 0x8000|(5<<10)|(5<<5)|5 = 0x94A5
+        var data = new byte[0x4C];
+        data[0] = 2; // V2
+        data[0x0E] = 0x00; data[0x0F] = 0x4C;
+        data[0x40] = 0x10; data[0x41] = 0xC2;
+        data[0x42] = 0x20; data[0x43] = 0xE5;
+        data[0x44] = 0x94; data[0x45] = 0xA5;
+
+        var mem = new Memory();
+        mem.LoadStory(data);
+        var decoder = new TextDecoder(mem, 2, 0);
+
+        var (text, _) = decoder.DecodeZString(0x40);
+        Assert.Equal("A0B", text);
+    }
+
+    [Fact]
+    public void V2_ShiftLock_PersistsAcrossCharacters()
+    {
+        // V2: z-char 4 = shift-lock to A1. Subsequent chars stay in A1.
+        // Z-chars: [4, 6, 7, 8, 5, 5]
+        //   4 → lock A1
+        //   6 → A1[0]='A', revert to locked A1
+        //   7 → A1[1]='B', revert to locked A1
+        //   8 → A1[2]='C'
+        //   pad
+        // Word 1: (4<<10)|(6<<5)|7 = 0x10C7
+        // Word 2: 0x8000|(8<<10)|(5<<5)|5 = 0xA0A5
+        var data = new byte[0x48];
+        data[0] = 2;
+        data[0x0E] = 0x00; data[0x0F] = 0x48;
+        data[0x40] = 0x10; data[0x41] = 0xC7;
+        data[0x42] = 0xA0; data[0x43] = 0xA5;
+
+        var mem = new Memory();
+        mem.LoadStory(data);
+        var decoder = new TextDecoder(mem, 2, 0);
+
+        var (text, _) = decoder.DecodeZString(0x40);
+        Assert.Equal("ABC", text);
     }
 
     #endregion
