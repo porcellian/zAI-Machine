@@ -98,3 +98,122 @@ The `IScreen` interface design anticipates the version-dependent screen model
 methods generic enough to support all three models.
 
 ---
+
+### Task 1.2 — Story File Loader and Memory Model
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Read the relevant spec sections**: ZSpec S1 (memory map), ZSpec11
+   "Memory layout" (V6/V7 max size corrected to 512K), and ZSpec11
+   "Padding" (non-zero padding in Infocom files excluded from checksum).
+
+2. **Inspected available story files**: `stories/minizork.z3` (52,216
+   bytes, V3) and `stories/czech.z5` (V5 conformance suite). Used `xxd`
+   to dump and hand-parse the 64-byte headers, confirming the byte
+   layout for version, high memory base, static memory base, file length,
+   and checksum fields.
+
+3. **Implemented `Memory` class** in `src/ZMachine.Core/Memory.cs`:
+   - `LoadStory(string path)` and `LoadStory(byte[] data)` with full
+     validation (version 1–8, size limits, static base sanity, file
+     length vs actual size).
+   - `ReadByte` / `ReadWord` (big-endian) for reading at any address.
+   - `WriteByte` / `WriteWord` with static memory write protection —
+     any write at or above `StaticBase` throws `InvalidOperationException`.
+   - `DynamicBase` (always 0), `StaticBase`, `HighBase` properties parsed
+     from header words.
+   - `FileLength` unpacked using version-dependent multiplier (×2/×4/×8).
+   - `HeaderChecksum` from header bytes $1C–$1D.
+   - `ComputeChecksum()` summing bytes $40 through the declared file
+     length, excluding padding per ZSpec11.
+   - `OriginalBytes` — independent copy retained for `@restart` and
+     Quetzal CMem XOR compression.
+   - `RestoreDynamicMemory()` — copies original bytes back into the
+     dynamic region (0 to StaticBase-1).
+   - `RawBytes` / `DynamicSpan` for performance-critical bulk access.
+
+4. **Wrote 30 tests** in `tests/ZMachine.Tests/MemoryTests.cs` covering:
+   - Header parsing for both minizork.z3 (V3) and czech.z5 (V5)
+   - Big-endian read/write correctness
+   - Static memory write protection (at boundary, above, spanning)
+   - Checksum computation verified against header-declared values
+   - Original bytes independence and `RestoreDynamicMemory` round-trip
+   - Validation: too-small files, invalid versions, bad static base
+   - Synthetic V3 story file construction for controlled testing
+   - File-path loading and missing-file error handling
+
+5. **Fixed test infrastructure**: Story file paths are relative to the
+   repo root, but `dotnet test` runs from the output bin directory. Added
+   a `FindRepoRoot()` helper that walks up from `AppContext.BaseDirectory`
+   looking for the `.slnx` file.
+
+6. **All 42 tests pass** (30 new Memory tests + 4 existing ConsoleScreen
+   tests + 8 framework-provided).
+
+#### Design Decisions
+
+**Class design: mutable Memory vs immutable StoryFile**
+
+Considered making `Memory` immutable (returning new instances on write)
+for safety, but rejected it because: (a) the Z-Machine spec explicitly
+models memory as a mutable byte array — writes to dynamic memory are a
+core operation, not an exception; (b) immutable copies on every write
+would be prohibitively expensive for a 512K array in a tight instruction
+loop; (c) the `OriginalBytes` copy already provides the immutability
+needed for restart and save comparison.
+
+**Validation strictness**
+
+Chose to reject files with `StaticBase == 0` even though the spec
+doesn't explicitly forbid it — a zero static base would make the entire
+file read-only, which is never correct for a real story file. Similarly,
+`StaticBase > file.Length` is rejected because it would place the
+boundary outside the loaded data.
+
+**File length = 0 handling**
+
+Some very early V1–V3 files have a zero file-length header field (bytes
+$1A–$1B = 0). Rather than rejecting these, `FileLength` is set to 0 and
+`ComputeChecksum()` falls back to summing all bytes from $40 to the end
+of the actual file. This matches the behavior described in ZSpec S11
+("Infocom used this for checksum calculation").
+
+**`OriginalBytes` as `byte[]` rather than `ReadOnlyMemory<byte>`**
+
+Used a plain `byte[]` for `OriginalBytes` rather than wrapping it in
+`ReadOnlyMemory<byte>`. The array is simpler to index, slice, and pass
+to `Array.Copy` for `RestoreDynamicMemory`. It's exposed as a public
+property for Quetzal XOR diff computation; callers are trusted not to
+mutate it (and a future refactor could wrap it if needed).
+
+**Write protection boundary: at StaticBase, not above**
+
+The spec says dynamic memory extends from byte 0 up to "the byte before
+the byte address stored in the header." This means `StaticBase` itself
+is the first static byte, so writes at `StaticBase` are illegal. Both
+`WriteByte` and `WriteWord` enforce `address >= StaticBase` as the
+guard, and `WriteWord` checks both bytes of the word individually to
+catch writes that span the dynamic/static boundary.
+
+#### Spec Interpretation Notes
+
+**ZSpec11 "Memory layout" — V6/V7 max size**: The base spec (table in
+S1) lists V6/V7 as 512K. The 1.1 amendments confirm this (the earlier
+version of the spec had incorrectly listed 320K). The `MaxStorySize`
+array uses 512K for V6–V8.
+
+**ZSpec11 "Padding"**: Infocom story files are often padded to a
+sector/block boundary. The padding bytes may be non-zero. The checksum
+computation must only sum bytes from $40 to the *header-declared* file
+length, not to the end of the physical file. This was verified by
+computing the checksum for `minizork.z3` — it matches the header-
+declared value (0xD870), confirming that the file length (52,216 bytes)
+equals the actual file size (no padding in this case).
+
+**File length packing multipliers**: V1–3: ×2, V4–5: ×4, V6–8: ×8.
+Verified with minizork.z3: packed value 0x65FC × 2 = 52,216 = actual
+file size. Verified with czech.z5: packed value 0x0CCF × 4 = 13,116.
+
+---
