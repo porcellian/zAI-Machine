@@ -498,3 +498,56 @@ The `-2` exists because offset 2 means "jump to the next instruction"
 (the default fall-through).
 
 ---
+
+### Task 2.3 — Packed Address Calculations
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Read spec section** ZSpec S1.2.3 (packed addresses) and verified
+   the formulas against zork1.z3: first `call_vs` instruction at $4F05
+   targets packed address $2A39, which unpacks to $5472 (× 2 for V3).
+   Confirmed by dumping $5472 — first byte is $03 (3 local variables),
+   a valid V3 routine header.
+
+2. **Implemented `AddressHelper`** in `src/ZMachine.Core/AddressHelper.cs`:
+   - `UnpackRoutineAddress(packed, version, routinesOffset)` — for call
+     targets and V6 initial PC.
+   - `UnpackStringAddress(packed, version, stringsOffset)` — for
+     print_paddr and abbreviation entries.
+   - Both use the same multiplier logic but with separate offset
+     parameters for V6–V7.
+
+3. **Wrote 24 tests** in `tests/ZMachine.Tests/AddressHelperTests.cs`:
+   - V1–3: × 2 (theory across all three versions), zero, max, zork1 call
+   - V4–5: × 4 (theory), max
+   - V6–7: × 4 + offset × 8 (routine, string, both, zero offset)
+   - V8: × 8 (routine, string, max, offset ignored)
+   - Consistency: routine = string outside V6–7
+
+4. **All 167 tests pass**.
+
+#### Design Decisions
+
+**Two methods instead of one with a type parameter**
+
+Routine and string unpacking only differ in V6–7 (where they use
+different offsets from the header). Having two explicit methods makes
+the call site clear about intent and prevents accidentally passing
+the wrong offset. The implementations share the same switch expression
+structure.
+
+#### Spec Interpretation Notes
+
+**V6–7 offset semantics**: The header stores `routinesOffset / 8` and
+`stringsOffset / 8` as words at $28 and $2A respectively. The unpacking
+formula is `packed × 4 + headerWord × 8`. The offset lets V6–7 games
+place routines and strings in separate regions of the 512K address space,
+each with its own packed address origin.
+
+**V8 ignores offsets**: V8 uses `packed × 8` with no offset, even though
+V8 has the same 512K limit as V6–7. The higher multiplier gives full
+coverage: $FFFF × 8 = 524,280, just under 512K.
+
+---
