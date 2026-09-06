@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ZMachine.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ZMachine.Core\ZMachine.Core.csproj" />
+    <ProjectReference Include="..\ZMachine.IO\ZMachine.IO.csproj" />
+  </ItemGroup>
+
+</Project>
