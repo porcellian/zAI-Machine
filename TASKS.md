@@ -480,10 +480,25 @@ including timed input in V4+.
   - Must return 13 for enter (ZSpec11 "@read")
   - Convert input to lowercase before tokenizing
 - `@read_char`: single ZSCII key, supports timed input (V4+)
+- Timed input callback mechanism (V4+, ZSpec S10.7):
+  - `@read` and `@read_char` accept optional time (tenths of a second) and
+    routine operands
+  - When the timer expires, the callback routine is called; if it returns
+    true, the input is cancelled and the opcode returns 0
+  - Timer resets after each keypress; callback may print but must not
+    alter input state
+- Input stream management (`@input_stream`):
+  - Stream 0: keyboard (default)
+  - Stream 1: file playback — reads pre-recorded commands from a file
+    (the counterpart of output stream 4's command recording)
+  - `@input_stream 0/1` switches between keyboard and file input
+  - When file input is exhausted, revert to keyboard (stream 0)
 - Input character mapping: cursor/function keys → ZSCII 129–154
-- Tests: mock "open mailbox", verify text buffer for V3 and V5 formats
+- Tests: mock "open mailbox", verify text buffer for V3 and V5 formats;
+  timed input callback returning true cancels input; input stream file
+  playback feeds commands correctly
 
-**Spec refs**: ZSpec S10, S15, ZSpec11 "@read"
+**Spec refs**: ZSpec S10, S10.5, S10.7, S15, ZSpec11 "@read"
 **Dependencies**: 5.1, 5.3
 
 ---
@@ -639,16 +654,32 @@ Remaining opcodes for styles, fonts, colors, and screen queries.
 - `@set_font font` — 1=normal, 3=character graphics, 4=fixed-pitch;
   font 2 undefined, must return 0; fonts 5–1023 reserved;
   stores previous font (ZSpec11 "@set_font")
-- `@set_colour fg bg` — colors 0–15 (ZSpec11 "Colour numbers");
-  -1 = under cursor (V6 only)
+- `@set_colour fg bg` (VAR:27) — explicit opcode implementation:
+  - Colors 0=current, 1=default, 2–9=standard, 10–12=Standard 1.1 greys
+    (ZSpec11 "Colour numbers")
+  - -1 = under cursor (V6 only)
+  - V6 adds optional 3rd operand (window number)
+  - When Flags 3 (header extension) is present, the multiple-colour model
+    MUST be used; interpreter number should NOT be set to "Amiga" (4)
+    unless by explicit user action (ZSpec11 "Colour numbers")
+- Fixed-pitch header bit (V5): monitor Flags 2 byte $10 bit 3 at runtime;
+  any `@storeb`/`@storew` to that header byte could toggle fixed-pitch
+  mode — the interpreter must honor this bit in V5 even though it is
+  deprecated (ZSpec11 "The fixed-pitch header bit")
+- V6 `@set_text_style` property 10 feedback: window property 10 must
+  reflect the ACTUAL style combination in use (not just what was
+  requested), so games can probe for style availability
+  (ZSpec11 "@set_text_style")
 - `@get_cursor array`, `@erase_line`, `@buffer_mode flag`
 - `@check_unicode char` (EXT) — bit 0=can print, bit 1=can accept input
 - `@save_undo` / `@restore_undo` (EXT) — single-level undo
   (stores: 0=fail, 1=saved, 2=restored)
-- Tests: style combinations, font switch returns previous, color setting
+- Tests: style combinations, font switch returns previous, color setting,
+  `@set_colour` with all standard colors, fixed-pitch header bit toggle
 
 **Spec refs**: ZSpec S8, ZSpec11 "@set_text_style", ZSpec11 "@set_font",
-ZSpec11 "Colour numbers"
+ZSpec11 "Colour numbers", ZSpec11 "The fixed-pitch header bit",
+ZSpec11 "@set_colour"
 **Dependencies**: 5.5, 6.1
 
 ---
@@ -875,12 +906,21 @@ reader/writer.
 - Each chunk: 4-byte type ID, length, raw data
 - Handles odd-length padding bytes (Quetzal S8.4.1)
 - Skips unknown chunks (Quetzal S8.9)
+- Duplicate chunk handling: if more than one chunk of a type that expects
+  only one (e.g., two `IFhd` chunks), use the first and ignore later
+  duplicates with a warning (Quetzal S8.8)
+- Nested FORM support: AIFF sound chunks have chunk type 'FORM' with
+  formtype 'AIFF' inside (not a bare 'AIFF' chunk type) — the reader
+  must detect nested FORMs and expose the inner formtype so resource
+  type detection works correctly (Blorb "AIFF Sounds")
 - `IffWriter.Write(Stream, string formType, IEnumerable<IffChunk>)` —
   writes FORM header + chunks with padding; auto-calculates FORM length
-- `IffChunk` class: type, data, length
-- Tests: round-trip FORM with odd-length chunk, verify padding
+- `IffChunk` class: type, data, length, optional inner formtype for
+  nested FORMs
+- Tests: round-trip FORM with odd-length chunk, verify padding;
+  parse nested AIFF FORM; duplicate chunk produces warning
 
-**Spec refs**: Quetzal S8, Blorb "The IFF Format"
+**Spec refs**: Quetzal S8, Blorb "The IFF Format", Blorb "AIFF Sounds"
 **Dependencies**: 1.1
 
 ---
@@ -901,7 +941,9 @@ Write current game state to a Quetzal file (IFF FORM 'IFZS').
 - Stks chunk (Quetzal S4): frames oldest-first; each = 3-byte return PC,
   flags, store var, argument flags, eval stack count, locals, eval stack
   - Non-V6: dummy first frame, all zeros except eval stack (Quetzal S4.11)
-- Optional AUTH/ANNO chunks
+- Optional AUTH/ANNO/IntD chunks
+- Old games without checksums: if the story file header has no checksum,
+  calculate one from the story file bytes when saving (Quetzal S5.5)
 - `@save` opcode: V1–3 branch on success; V4+ store 1/0
 - Optional prompt parameter for V5+ (ZSpec11 "@save and @restore")
 - Tests: save after 3 moves of `zork1.z3`, verify valid IFF, verify IFhd
@@ -921,8 +963,18 @@ Read a Quetzal file and reconstruct game state. Also implement
   memory and stacks
 - IFhd validation: compare release, serial, checksum (Quetzal S5.3)
 - CMem decode: XOR-decompress; short data treated as zeros (Quetzal S3.4)
+  - Error handling (Quetzal S3.5): reject if decoded data is larger than
+    dynamic memory; reject if encoded data ends with an incomplete run
+    (zero byte without a following length byte)
 - UMem decode: overwrite; length must match (Quetzal S3.6)
 - Stks decode: reconstruct frames; verify dummy frame (Quetzal S4.11)
+  - Stack overflow detection (Quetzal S4.8): if the restored stack dump
+    exceeds the interpreter's stack size limits, report an error rather
+    than crashing
+- IntD chunk handling: read and preserve `IntD` (interpreter-dependent
+  data) chunks from save files written by other interpreters; do not
+  reject a save file for containing an IntD with a different interpreter
+  ID (Quetzal S7.8–S7.17)
 - PC restore: V4+ store target receives 2 ("restore just happened")
 - `@restore`: V1–3 branch; V4+ restored save's store gets 2
 - Undo:
@@ -954,10 +1006,24 @@ resource index ('RIdx').
   - `HasResource(string usage, int number)`
 - Resource index parsing: 4-byte count, count × 12-byte entries
   (usage, number, offset)
+- Shared resource chunks: multiple resource index entries may point to
+  the same chunk offset — handle without duplication or error
+  (Blorb "Contents of the Resource Index Chunk")
+- Data resource chunks: handle 'Data' usage entries with 'TEXT' and
+  'BINA' chunk types gracefully (skip or expose via API) — the parser
+  must not choke on these even if Z-code doesn't use them directly
+  (Blorb "Data Resource Chunks")
+- Color Palette chunk ('Plte'): parse if present; two formats — explicit
+  RGB list or direct-color depth hint — indicating what colors the game
+  needs (Blorb "The Color Palette Chunk")
+- Deprecated chunks: gracefully skip 'SNam' (UTF-16 big-endian story
+  name) found in older Blorb files (Blorb "Deprecated Chunks")
 - Validation: RIdx must be first chunk; warn on duplicates
-- Tests: construct minimal Blorb, parse and retrieve resources
+- Tests: construct minimal Blorb, parse and retrieve resources; shared
+  chunks resolve correctly; unknown/deprecated chunks skipped gracefully
 
-**Spec refs**: Blorb "Overall Structure", "Contents of the Resource Index Chunk"
+**Spec refs**: Blorb "Overall Structure", "Contents of the Resource Index Chunk",
+"Data Resource Chunks", "The Color Palette Chunk", "Deprecated Chunks"
 **Dependencies**: 9.1
 
 ---
@@ -971,6 +1037,10 @@ metadata chunks.
 - If Exec resource 0 with type 'ZCOD' exists, extract and pass to
   `Memory.LoadStory(byte[])`
 - IFhd validation: if standalone story + Blorb both provided, verify match
+- Conflicting executable validation: error if Blorb contains an executable
+  chunk AND a separate standalone story file was also provided; also error
+  if Blorb has no executable chunk and no standalone file was given
+  (Blorb "Executable Resource Chunks")
 - Accept `.zblorb`/`.zlb`/`.blorb`/`.blb` extensions
 - Optional chunks: IFhd (game ID), RelN (release number for `@picture_data 0`),
   Fspc (frontispiece), RDes (resource descriptions), IFmd (metadata XML),
@@ -1353,9 +1423,13 @@ MOD (music). Dual-channel model.
   - `PlaySound(int number, int volume, int repeats, ushort callback)`
   - `StopSound(int number)`, `StopAll()`
 - Backend (NAudio, SDL2_mixer, or OpenAL):
-  - AIFF playback (effects channel)
+  - AIFF playback (effects channel) — note: AIFF stored as nested IFF
+    FORM with formtype 'AIFF' (handled by IFF reader, Task 9.1)
   - Ogg Vorbis (via NVorbis or similar)
   - MOD/IT/XM/S3M (tracker library)
+  - SONG format: deprecated but still legal in Blorb files; recognize
+    and either play (if feasible) or skip with a warning
+    (Blorb "Song Sounds")
 - Dual-channel model (Blorb "Z-Machine Compatibility Issues"):
   - Effects interrupt effects; music interrupts music; they do NOT
     cross-interrupt
@@ -1418,12 +1492,26 @@ Standard 1.1 true color via `@set_true_colour` and V6 transparency.
   - 2=black($0000), 3=red($001D), 4=green($0340), 5=yellow($03BD),
     6=blue($59A0), 7=magenta($7C1F), 8=cyan($77A0), 9=white($7FFF),
     10=light grey($5AD6), 11=medium grey($4631), 12=dark grey($2D6B)
+- Non-standard colour tracking in window property 11: when true colour
+  or "under the cursor" is used, property 11 stores values >= 16 for
+  non-standard colours; the interpreter should track the last 240
+  distinct non-standard colours used (ZSpec11 "Colour numbers")
 - Transparency (V6 only):
-  - Background color 15 = transparent
+  - Background color 15 = transparent (via `@set_colour` only, NOT via
+    `@set_true_colour -4` which uses a different path)
   - Flags 3 bit 0: game wants transparency; clear if unsupported
-  - Transparent bg: text drawn without bg fill; erase ops become no-ops
-  - No scrolling or reverse video with transparent bg
-- Tests: set/read true colors via properties 16/17, transparency disables erase
+  - Transparent is only valid as BACKGROUND, not foreground — foreground
+    attempt should produce a diagnostic (ZSpec11 "@set_colour")
+  - Transparent bg constraints:
+    - `@erase_window`, `@erase_line`, `@erase_picture` become no-ops
+    - Scrolling is not permitted
+    - Reverse video is not valid
+    - Input prompts should be avoided
+    - Text drawn without bg fill (avoid printing on top of itself —
+      anti-aliasing artifacts)
+- Tests: set/read true colors via properties 16/17, transparency disables
+  erase, transparent foreground produces diagnostic, non-standard colour
+  tracking in property 11
 
 **Spec refs**: ZSpec11 "@set_true_colour", ZSpec11 "Colour numbers",
 ZSpec11 "@set_colour", ZSpec11 "Header Extension"
@@ -1493,7 +1581,9 @@ pictures change colors based on previously-plotted pictures.
   - Constraints: all PNGs indexed-color (type 3), indices 2–15,
     optional transparency at index 0
 - Current Palette tracking (14 entries, indices 2–15):
-  - Non-adaptive picture drawn → copy its PLTE (with gamma) to Current Palette
+  - Non-adaptive picture drawn → copy its PLTE to Current Palette,
+    transforming through the PNG's gAMA, cHRM, and sRGB chunks to
+    produce correct sRGB values (Blorb "The Adaptive Palette Chunk")
   - Adaptive picture drawn → ignore its PLTE, render with Current Palette
 - Empty APal (Shogun, Journey): signals palette-changing behavior possible
 - Cache invalidation: adaptive images may be stale after palette change
