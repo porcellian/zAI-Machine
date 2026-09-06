@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ZMachine.App/ZMachine.App.csproj" />
+    <Project Path="src/ZMachine.Core/ZMachine.Core.csproj" />
+    <Project Path="src/ZMachine.IO/ZMachine.IO.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ZMachine.Tests/ZMachine.Tests.csproj" />
+  </Folder>
+</Solution>
