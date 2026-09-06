@@ -217,3 +217,104 @@ Verified with minizork.z3: packed value 0x65FC × 2 = 52,216 = actual
 file size. Verified with czech.z5: packed value 0x0CCF × 4 = 13,116.
 
 ---
+
+### Task 1.3 — Header Parser and Version Detection
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Read spec sections**: ZSpec S11 (header format table), ZSpec11
+   "Header capabilities bits" (Flags 1/2/3 semantics), ZSpec11 "Header
+   Extension" (extension table words 4–6 for Standard 1.1).
+
+2. **Inspected story file headers** with `xxd`: minizork.z3 (V3, no
+   extension table) and czech.z5 (V5, extension table at $0106 with
+   3 words). Verified field offsets by hand-parsing both headers.
+
+3. **Implemented `Header` class** in `src/ZMachine.Core/Header.cs`:
+   - Typed read-only properties for all 64-byte header fields: version,
+     flags, release number, memory addresses (high, static, dictionary,
+     object table, globals, abbreviations, terminating chars, alphabet),
+     serial number, file length, checksum, interpreter ID, screen dims,
+     V6/V7 offsets, colors, and standard revision.
+   - `HeaderExtension` parsed automatically if header word $36 is nonzero.
+   - `ConfigureInterpreter()` method for capability negotiation: writes
+     interpreter ID, screen dimensions, standard revision ($01 $01), and
+     sets/clears capability bits in Flags 1 and Flags 2.
+   - `InterpreterCapabilities` flags enum covering all negotiable features.
+
+4. **Implemented `HeaderExtension` class** in `src/ZMachine.Core/HeaderExtension.cs`:
+   - Parses word count, Unicode translation table address, Flags 3, and
+     true default colors from the extension table.
+   - Gracefully handles tables shorter than the full 4 words (returns 0
+     for missing entries).
+   - `ClearReservedFlags3Bits()` clears all reserved bits per ZSpec11.
+
+5. **Wrote 38 tests** in `tests/ZMachine.Tests/HeaderTests.cs`:
+   - Complete header field parsing for minizork.z3 (V3, 13 tests) and
+     czech.z5 (V5, 8 tests).
+   - Header extension parsing (5 tests): word count, unicode table,
+     Flags 3, true colors, beyond-table-length handling.
+   - Capability negotiation (8 tests): standard revision, interpreter
+     number, screen dimensions, V3 flag bits, V5 flag bits, screen units,
+     Flags 3 reserved bit clearing, no-capabilities clearing.
+   - Synthetic tests (2 tests): V6 routines/strings offsets, colors.
+
+6. **All 80 tests pass** (38 Header + 30 Memory + 4 ConsoleScreen + 8
+   framework).
+
+#### Design Decisions
+
+**Header reads from Memory, not raw bytes**
+
+The `Header` constructor takes a `Memory` instance rather than a `byte[]`.
+This keeps the header in sync with the live memory state — when
+`ConfigureInterpreter()` writes capability bits back, they go through
+`Memory.WriteByte`/`WriteWord` which enforces the dynamic/static
+boundary. All header bytes are in dynamic memory (below StaticBase),
+so writes succeed.
+
+**InterpreterCapabilities as [Flags] enum**
+
+Used a `[Flags]` enum rather than individual bool parameters or a
+config object. This makes the call site readable (`Colors | Bold |
+Italic`) and is easy to extend as new capabilities are added. The
+flag values don't correspond directly to Flags 1/2 bit positions
+because those differ by version — the mapping is handled internally.
+
+**Flags 1 bit semantics differ by version**
+
+V1–3 and V4+ Flags 1 have completely different bit meanings. Rather
+than exposing a unified abstraction, `ConfigureInterpreter` branches
+on version and sets the correct bits for each. The raw `Flags1` byte
+is still available for callers that need to inspect game-set bits.
+
+**HeaderExtension numbering**
+
+The ZSpec11 amendments label extension words as "Word 4", "Word 5",
+"Word 6" — these continue the conceptual numbering from the base
+header. In the actual table, these are at data offsets 2, 3, 4 (word
+0 = count, word 1 = Unicode table). The implementation uses the table
+offset for indexing and documents the spec numbering in comments.
+
+#### Spec Interpretation Notes
+
+**Header extension word count**: Word 0 of the extension table is the
+number of "further words" — i.e., words beyond word 0 itself. Czech.z5
+has word count = 3, meaning words 1–3 are present but word 4 (true
+default background) is not. `ReadExtensionWord` returns 0 for indices
+beyond the count.
+
+**Flags 3 reserved bit clearing**: ZSpec11 says "all reserved bits in
+the Flags 3 word MUST be cleared by the interpreter." Only bit 0
+(transparency request) is defined. The interpreter clears everything
+except bit 0, and even bit 0 would need to be cleared if transparency
+isn't supported (handled during capability negotiation once the
+rendering system is in place).
+
+**Standard revision bytes**: $32 and $33 are two separate bytes (major
+and minor), not a big-endian word. For Standard 1.1, the interpreter
+writes $01 at $32 and $01 at $33 using `WriteByte`, not `WriteWord`.
+
+---
