@@ -4,7 +4,8 @@ using ZMachine.Core;
 
 /// <summary>
 /// Tests for MachineState — variable read/write (stack, locals, globals),
-/// indirect variable references, StoreResult, and ExecuteBranch.
+/// indirect variable references, StoreResult, ExecuteBranch, and per-frame
+/// stack/local isolation via CallStack.
 /// </summary>
 public class MachineStateTests
 {
@@ -15,7 +16,7 @@ public class MachineStateTests
     {
         var state = CreateState();
         state.WriteVariable(0, 42);
-        Assert.Single(state.Stack);
+        Assert.Single(state.CallStack.CurrentFrame!.EvalStack);
     }
 
     [Fact]
@@ -27,7 +28,7 @@ public class MachineStateTests
 
         Assert.Equal(200, state.ReadVariable(0));
         Assert.Equal(100, state.ReadVariable(0));
-        Assert.Empty(state.Stack);
+        Assert.Empty(state.CallStack.CurrentFrame!.EvalStack);
     }
 
     [Fact]
@@ -105,8 +106,6 @@ public class MachineStateTests
         var (memory, state) = CreateMemoryAndState();
         state.WriteVariable(16, 0x4242);
 
-        // Global 16 is at globalsAddress + 0 (first global)
-        // Globals address for our test memory is 0x20
         ushort value = memory.ReadWord(0x20);
         Assert.Equal(0x4242, value);
     }
@@ -115,7 +114,6 @@ public class MachineStateTests
     public void Global_ReadsFromMemory()
     {
         var (memory, state) = CreateMemoryAndState();
-        // Write directly to memory at global 17 = globalsAddress + 2
         memory.WriteWord(0x22, 0xBEEF);
 
         Assert.Equal(0xBEEF, state.ReadVariable(17));
@@ -125,8 +123,6 @@ public class MachineStateTests
     public void Global_HighestIndex()
     {
         var state = CreateState();
-        // Variable 255 = global (255-16) = global 239
-        // At offset 239*2 = 478 from globals address
         state.WriteVariable(255, 0x1111);
         Assert.Equal(0x1111, state.ReadVariable(255));
     }
@@ -143,7 +139,7 @@ public class MachineStateTests
 
         ushort value = state.ReadVariableIndirect(0);
         Assert.Equal(42, value);
-        Assert.Single(state.Stack); // still there
+        Assert.Single(state.CallStack.CurrentFrame!.EvalStack);
     }
 
     [Fact]
@@ -153,7 +149,7 @@ public class MachineStateTests
         state.WriteVariable(0, 42);
 
         state.WriteVariableIndirect(0, 99);
-        Assert.Single(state.Stack); // count unchanged
+        Assert.Single(state.CallStack.CurrentFrame!.EvalStack);
         Assert.Equal(99, state.ReadVariable(0));
     }
 
@@ -288,8 +284,6 @@ public class MachineStateTests
     [Fact]
     public void ExecuteBranch_Offset2_JumpsToSameAddress()
     {
-        // Offset 2 means target = addressAfterBranch + 2 - 2 = addressAfterBranch
-        // This is an infinite loop (or a no-op branch)
         var branch = new BranchInfo { BranchOnTrue = true, Offset = 2 };
         var result = MachineState.ExecuteBranch(true, branch, 100);
 
@@ -300,7 +294,6 @@ public class MachineStateTests
     [Fact]
     public void ExecuteBranch_RFalse_ConditionNotMet_DontBranch()
     {
-        // Even for rfalse/rtrue, if condition doesn't match, don't branch
         var branch = new BranchInfo { BranchOnTrue = true, Offset = 0 };
         var result = MachineState.ExecuteBranch(false, branch, 100);
 
@@ -309,11 +302,265 @@ public class MachineStateTests
 
     #endregion
 
+    #region No Frame — Operations Throw
+
+    [Fact]
+    public void ReadVariable_NoFrame_Throws()
+    {
+        var state = CreateStateWithoutFrame();
+        Assert.Throws<InvalidOperationException>(() => state.ReadVariable(0));
+    }
+
+    [Fact]
+    public void WriteVariable_NoFrame_Throws()
+    {
+        var state = CreateStateWithoutFrame();
+        Assert.Throws<InvalidOperationException>(() => state.WriteVariable(0, 42));
+    }
+
+    [Fact]
+    public void ReadLocal_NoFrame_Throws()
+    {
+        var state = CreateStateWithoutFrame();
+        Assert.Throws<InvalidOperationException>(() => state.ReadVariable(1));
+    }
+
+    [Fact]
+    public void GlobalAccess_NoFrame_StillWorks()
+    {
+        var state = CreateStateWithoutFrame();
+        state.WriteVariable(16, 0x1234);
+        Assert.Equal(0x1234, state.ReadVariable(16));
+    }
+
+    #endregion
+
+    #region Frame Isolation — Per-Frame Eval Stack
+
+    [Fact]
+    public void PushFrame_GetsCleanStack()
+    {
+        var state = CreateState();
+        state.WriteVariable(0, 111);
+        state.WriteVariable(0, 222);
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        Assert.Empty(state.CallStack.CurrentFrame!.EvalStack);
+    }
+
+    [Fact]
+    public void PopFrame_RestoresOuterStack()
+    {
+        var state = CreateState();
+        state.WriteVariable(0, 111);
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        state.WriteVariable(0, 999);
+
+        state.CallStack.PopFrame();
+        Assert.Equal(111, state.ReadVariable(0));
+    }
+
+    [Fact]
+    public void NestedFrames_StacksAreIndependent()
+    {
+        var state = CreateState();
+        state.WriteVariable(0, 10);
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        state.WriteVariable(0, 20);
+
+        state.CallStack.PushFrame(new CallFrame(0x200, 0, false, 0, 0));
+        state.WriteVariable(0, 30);
+
+        Assert.Equal(30, state.ReadVariable(0));
+        state.CallStack.PopFrame();
+        Assert.Equal(20, state.ReadVariable(0));
+        state.CallStack.PopFrame();
+        Assert.Equal(10, state.ReadVariable(0));
+    }
+
+    #endregion
+
+    #region Frame Isolation — Per-Frame Locals
+
+    [Fact]
+    public void PushFrame_GetsOwnLocals()
+    {
+        var state = CreateState(localCount: 3);
+        state.WriteVariable(1, 0xAAAA);
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 5, 0));
+        Assert.Equal(0, state.ReadVariable(1));
+        state.WriteVariable(1, 0xBBBB);
+
+        state.CallStack.PopFrame();
+        Assert.Equal(0xAAAA, state.ReadVariable(1));
+    }
+
+    [Fact]
+    public void InnerFrame_DifferentLocalCount()
+    {
+        var state = CreateState(localCount: 2);
+        Assert.Throws<InvalidOperationException>(() => state.ReadVariable(3));
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 5, 0));
+        state.WriteVariable(3, 0x1234);
+        Assert.Equal(0x1234, state.ReadVariable(3));
+    }
+
+    #endregion
+
+    #region CallFrame Properties
+
+    [Fact]
+    public void CallFrame_ReturnPC_Preserved()
+    {
+        var frame = new CallFrame(0x5472, 5, false, 3, 2);
+        Assert.Equal(0x5472, frame.ReturnPC);
+    }
+
+    [Fact]
+    public void CallFrame_StoreVariable_Preserved()
+    {
+        var frame = new CallFrame(0x100, 5, false, 3, 2);
+        Assert.Equal(5, frame.StoreVariable);
+    }
+
+    [Fact]
+    public void CallFrame_DiscardResult_Preserved()
+    {
+        var frame = new CallFrame(0x100, 0, true, 3, 2);
+        Assert.True(frame.DiscardResult);
+    }
+
+    [Fact]
+    public void CallFrame_ArgumentCount_Preserved()
+    {
+        var frame = new CallFrame(0x100, 0, false, 5, 3);
+        Assert.Equal(3, frame.ArgumentCount);
+    }
+
+    [Fact]
+    public void CallFrame_LocalCount_Preserved()
+    {
+        var frame = new CallFrame(0x100, 0, false, 7, 0);
+        Assert.Equal(7, frame.LocalCount);
+    }
+
+    [Fact]
+    public void CallFrame_Locals_InitToZero()
+    {
+        var frame = new CallFrame(0x100, 0, false, 15, 0);
+        for (int i = 1; i <= 15; i++)
+            Assert.Equal(0, frame.Locals[i]);
+    }
+
+    #endregion
+
+    #region CallStack Operations
+
+    [Fact]
+    public void CallStack_Empty_CurrentFrameIsNull()
+    {
+        var state = CreateStateWithoutFrame();
+        Assert.Null(state.CallStack.CurrentFrame);
+    }
+
+    [Fact]
+    public void CallStack_Empty_FrameCountIsZero()
+    {
+        var state = CreateStateWithoutFrame();
+        Assert.Equal(0, state.CallStack.FrameCount);
+    }
+
+    [Fact]
+    public void CallStack_PushIncrementsFrameCount()
+    {
+        var state = CreateStateWithoutFrame();
+        state.CallStack.PushFrame(new CallFrame(0, 0, false, 0, 0));
+        Assert.Equal(1, state.CallStack.FrameCount);
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        Assert.Equal(2, state.CallStack.FrameCount);
+    }
+
+    [Fact]
+    public void CallStack_PopDecrementsFrameCount()
+    {
+        var state = CreateState();
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        Assert.Equal(2, state.CallStack.FrameCount);
+
+        state.CallStack.PopFrame();
+        Assert.Equal(1, state.CallStack.FrameCount);
+    }
+
+    [Fact]
+    public void CallStack_PopEmpty_Throws()
+    {
+        var state = CreateStateWithoutFrame();
+        Assert.Throws<InvalidOperationException>(() => state.CallStack.PopFrame());
+    }
+
+    [Fact]
+    public void CallStack_GetFramesBottomUp_ReturnsCorrectOrder()
+    {
+        var state = CreateStateWithoutFrame();
+        var frame1 = new CallFrame(0, 0, false, 0, 0);
+        var frame2 = new CallFrame(0x100, 0, false, 0, 0);
+        var frame3 = new CallFrame(0x200, 0, false, 0, 0);
+
+        state.CallStack.PushFrame(frame1);
+        state.CallStack.PushFrame(frame2);
+        state.CallStack.PushFrame(frame3);
+
+        var frames = state.CallStack.GetFramesBottomUp().ToList();
+        Assert.Equal(3, frames.Count);
+        Assert.Same(frame1, frames[0]);
+        Assert.Same(frame2, frames[1]);
+        Assert.Same(frame3, frames[2]);
+    }
+
+    #endregion
+
+    #region Indirect References Across Frames
+
+    [Fact]
+    public void IndirectRead_PeeksCurrentFrameStack()
+    {
+        var state = CreateState();
+        state.WriteVariable(0, 42);
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        state.WriteVariable(0, 99);
+
+        Assert.Equal(99, state.ReadVariableIndirect(0));
+        Assert.Single(state.CallStack.CurrentFrame!.EvalStack);
+    }
+
+    [Fact]
+    public void IndirectWrite_ReplacesCurrentFrameStackTop()
+    {
+        var state = CreateState();
+        state.WriteVariable(0, 42);
+
+        state.CallStack.PushFrame(new CallFrame(0x100, 0, false, 0, 0));
+        state.WriteVariable(0, 99);
+        state.WriteVariableIndirect(0, 77);
+
+        Assert.Equal(77, state.ReadVariable(0));
+
+        state.CallStack.PopFrame();
+        Assert.Equal(42, state.ReadVariable(0));
+    }
+
+    #endregion
+
     #region Helpers
 
     /// <summary>
-    /// Creates a MachineState with a synthetic V3 memory that has
-    /// enough space for 240 global variables in dynamic memory.
+    /// Creates a MachineState with a synthetic V3 memory and one initial
+    /// call frame pushed (simulating the main routine).
     /// </summary>
     private static MachineState CreateState(int localCount = 0)
     {
@@ -323,9 +570,6 @@ public class MachineStateTests
 
     private static (Memory memory, MachineState state) CreateMemoryAndState(int localCount = 0)
     {
-        // Need 240 globals × 2 bytes = 480 bytes starting at globals address.
-        // Globals at $20, so we need at least $20 + 480 = $200 (512) bytes
-        // with static base above the globals area.
         var data = new byte[1024];
         data[0] = 3; // V3
         data[0x04] = 0x03; data[0x05] = 0x00; // high base at $300
@@ -335,12 +579,28 @@ public class MachineStateTests
         var memory = new Memory();
         memory.LoadStory(data);
 
-        var state = new MachineState(memory, 0x20)
-        {
-            LocalCount = localCount
-        };
+        var state = new MachineState(memory, 0x20);
+        state.CallStack.PushFrame(new CallFrame(0, 0, false, localCount, 0));
 
         return (memory, state);
+    }
+
+    /// <summary>
+    /// Creates a MachineState with no call frame — for testing behavior
+    /// when operations are attempted without an active frame.
+    /// </summary>
+    private static MachineState CreateStateWithoutFrame()
+    {
+        var data = new byte[1024];
+        data[0] = 3;
+        data[0x04] = 0x03; data[0x05] = 0x00;
+        data[0x0C] = 0x00; data[0x0D] = 0x20;
+        data[0x0E] = 0x02; data[0x0F] = 0x00;
+
+        var memory = new Memory();
+        memory.LoadStory(data);
+
+        return new MachineState(memory, 0x20);
     }
 
     #endregion

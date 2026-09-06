@@ -551,3 +551,82 @@ V8 has the same 512K limit as V6–7. The higher multiplier gives full
 coverage: $FFFF × 8 = 524,280, just under 512K.
 
 ---
+
+### Task 2.4 — Stack and Call Frame Model
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Created `CallFrame` class** (`src/ZMachine.Core/CallFrame.cs`) —
+   represents a single routine invocation on the Z-Machine call stack.
+   Each frame owns: return PC, store variable, discard-result flag,
+   argument count, 0–15 local variables (1-indexed, slot 0 unused),
+   and a per-frame evaluation stack.
+
+2. **Created `CallStack` class** (`src/ZMachine.Core/CallStack.cs`) —
+   manages a stack of `CallFrame`s. Provides PushFrame, PopFrame,
+   CurrentFrame (nullable peek), FrameCount (for CATCH/THROW), and
+   GetFramesBottomUp (for Quetzal serialization).
+
+3. **Refactored `MachineState`** — replaced the flat `Stack<ushort>` and
+   standalone `Locals` array with a `CallStack` property. Variable
+   read/write methods now delegate to `CurrentFrame.EvalStack` and
+   `CurrentFrame.Locals`. Operations on variables 0–15 throw
+   `InvalidOperationException` if no frame is active.
+
+4. **Updated all existing tests** — the 30 existing `MachineStateTests`
+   were refactored to push an initial call frame in the test helper
+   (simulating the main routine). Assertions that referenced `state.Stack`
+   were changed to access `state.CallStack.CurrentFrame!.EvalStack`.
+
+5. **Added 23 new tests** covering:
+   - Frame isolation: nested frames get independent eval stacks and locals
+   - Pop restores outer frame's stack and locals
+   - No-frame behavior: stack/local ops throw, globals still work
+   - CallFrame property preservation (ReturnPC, StoreVariable, etc.)
+   - CallStack operations (push/pop count, empty state, bottom-up enumeration)
+   - Indirect references across frame boundaries
+
+#### Design Decisions
+
+**Per-frame eval stack vs shared stack with frame markers**
+
+The Z-Machine spec says each routine invocation has its own evaluation
+stack (ZSpec S6.3). Two implementation approaches:
+- A single shared stack with frame-boundary markers (how many values
+  belong to each frame). Quetzal serialization needs this information.
+- Per-frame `Stack<ushort>` on each `CallFrame`.
+
+Chose per-frame stacks for simplicity and correctness — each frame's
+stack is naturally isolated, and there's no risk of one frame accidentally
+accessing another's values. Quetzal serialization can enumerate each
+frame's stack directly via `GetFramesBottomUp()`.
+
+**Locals array size 16 with 1-indexed access**
+
+The spec says locals are numbered 1–15 (variable numbers 1–15), so a
+16-element array with slot 0 unused maps cleanly: `Locals[variableNumber]`.
+This avoids off-by-one errors at every access site. The wasted 2 bytes
+per frame are insignificant.
+
+**Throwing on out-of-range local access**
+
+Reading/writing a local beyond `LocalCount` throws rather than silently
+returning 0. This catches bugs in the decoder or execution engine early.
+The spec doesn't define behavior for accessing non-existent locals,
+so failing fast is the safest choice.
+
+#### Spec Interpretation Notes
+
+**Global variables don't need a frame**: Variables 16–255 map directly
+to memory at `globalsAddress + 2*(g-16)`. They're machine-wide, not
+per-routine, so they work even without an active call frame. This is
+important because global access happens during initialization before
+the first routine call.
+
+**CATCH/THROW use frame count**: Quetzal S6.2 specifies that CATCH
+returns the current frame count and THROW unwinds to a target count.
+The `FrameCount` property on `CallStack` supports this directly.
+
+---
