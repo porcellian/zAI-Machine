@@ -3,6 +3,9 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# Copyrighted Infocom story files (not for redistribution)
+stories/zork1.z3
+
 # dotenv files
 .env
 
