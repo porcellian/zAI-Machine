@@ -413,3 +413,88 @@ byte). If the first byte has an Omitted entry, the second byte is not
 read.
 
 ---
+
+### Task 2.2 — Branch and Store Result Mechanics
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Read spec sections**: ZSpec S4.5–S4.6 (store byte encoding), ZSpec
+   S4.7 (branch offset encoding), ZSpec S6.3–S6.4 (variable numbering —
+   stack, locals, globals), ZSpec11 "Indirect variable references" (the
+   seven opcodes where variable 0 peeks/replaces instead of push/pop),
+   ZSpec11 "@jump" (branch target = address_after_branch + offset - 2).
+
+2. **Implemented `MachineState` class** in
+   `src/ZMachine.Core/MachineState.cs`:
+   - Evaluation stack, locals array (1–15), and globals via Memory.
+   - `ReadVariable(byte)` / `WriteVariable(byte, ushort)`: variable 0
+     pops/pushes, 1–15 = locals, 16–255 = globals at memory address.
+   - `ReadVariableIndirect` / `WriteVariableIndirect`: variable 0 peeks/
+     replaces the stack top (no push/pop). Non-zero variables behave
+     identically to the normal accessors.
+   - `StoreResult(byte variable, ushort value)`: delegates to WriteVariable.
+   - `ExecuteBranch(bool condition, BranchInfo, int addressAfterBranch)`:
+     static method returning a `BranchResult` — DontBranch, Jump(target),
+     ReturnFalse, or ReturnTrue.
+
+3. **Implemented `BranchResult` struct** and `BranchAction` enum to
+   represent the four possible outcomes of branch evaluation, avoiding
+   magic numbers or out-parameters in the execution engine.
+
+4. **Wrote 30 tests** in `tests/ZMachine.Tests/MachineStateTests.cs`:
+   - Stack: push, pop, LIFO order, underflow
+   - Locals: read/write, independence, out-of-range errors
+   - Globals: read/write, round-trip through memory, highest index (255)
+   - Indirect references: peek vs pop, replace vs push, underflow
+   - StoreResult: to stack, local, global
+   - ExecuteBranch: condition true/false × branch-on-true/false, rfalse,
+     rtrue, negative offset, offset 2 (self-jump), condition-not-met
+     suppresses rfalse/rtrue
+
+5. **All 143 tests pass** (30 MachineState + 33 decoder + 38 header +
+   30 memory + 4 console + 8 framework).
+
+#### Design Decisions
+
+**MachineState as the central execution context**
+
+Rather than making StoreResult and ExecuteBranch free-standing static
+helpers, they live on `MachineState` which owns the stack, locals, and
+memory reference. This avoids passing the execution context through
+every call and gives the future execution engine (Task 7.1) a natural
+home for the PC, call stack, and other runtime state.
+
+**BranchResult as a discriminated result type**
+
+`ExecuteBranch` returns a `BranchResult` struct with an `Action` enum
+rather than modifying the PC directly. This keeps the branch logic
+pure — the execution engine decides what "return from routine" means
+without the branch evaluator needing to know about the call stack.
+
+**Indirect variable semantics**
+
+The seven indirect-reference opcodes (inc, dec, inc_chk, dec_chk, load,
+store, pull) use a different semantic for variable 0: peek/replace
+instead of pop/push. This is implemented as a separate pair of methods
+(`ReadVariableIndirect`/`WriteVariableIndirect`) rather than a flag
+parameter, because the distinction is always known at the opcode
+dispatch level.
+
+#### Spec Interpretation Notes
+
+**Global variable layout**: ZSpec S6.4 says globals are "stored in a
+table starting at the address given in the header" as "a table of
+240 2-byte words." Global variable g (numbered 16–255) is at byte
+address `globals_address + 2 * (g - 16)`. This means the globals table
+occupies 480 bytes of dynamic memory.
+
+**Branch target formula**: The spec says target = address_after_branch +
+offset - 2. The "address_after_branch" is the byte address immediately
+after the branch data bytes (1 or 2 bytes depending on the encoding).
+This is `Instruction.NextAddress` after `DecodeBranch` has been called.
+The `-2` exists because offset 2 means "jump to the next instruction"
+(the default fall-through).
+
+---
