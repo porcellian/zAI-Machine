@@ -318,3 +318,98 @@ and minor), not a big-endian word. For Standard 1.1, the interpreter
 writes $01 at $32 and $01 at $33 using `WriteByte`, not `WriteWord`.
 
 ---
+
+## Phase 2: Instruction Decoding
+
+### Task 2.1 — Opcode Forms and Operand Type Decoding
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Read spec sections**: ZSpec S4.1–S4.4 (instruction encoding forms),
+   ZSpec S4.5 (store byte), ZSpec S4.7 (branch offset), ZSpec11 "Operand
+   evaluation" (left-to-right order).
+
+2. **Inspected real instructions** by dumping bytes at zork1.z3's initial
+   PC ($4F05). Verified the first instruction is `call_vs` (VAR:0) with
+   3 large-constant operands: $2A39, $8010, $FFFF.
+
+3. **Implemented `Instruction` struct** and supporting types in
+   `src/ZMachine.Core/Instruction.cs`:
+   - `OpcodeForm` enum: Op2, Op1, Op0, Var, Ext
+   - `OperandType` enum: LargeConstant, SmallConstant, Variable, Omitted
+   - `BranchInfo` struct with BranchOnTrue, Offset, IsRFalse, IsRTrue
+
+4. **Implemented `InstructionDecoder`** in
+   `src/ZMachine.Core/InstructionDecoder.cs`:
+   - `Decode(Memory, int pc)` handles all four encoding forms:
+     - Long form (0b0x): bits 6,5 encode two operand types, bottom 5 = opcode
+     - Short form (0b10): bits 5,4 = type (or 0OP if 0b11), bottom 4 = opcode
+     - Variable form (0b11): bit 5 → 2OP vs VAR, type byte(s) follow
+     - Extended form ($BE prefix): next byte = EXT opcode, type byte follows
+   - `DecodeStore` and `DecodeBranch` separated out — the caller (future
+     opcode dispatcher) calls these based on opcode table metadata.
+   - Double-variable forms (call_vs2 $EC, call_vn2 $FA): two type bytes,
+     up to 8 operands.
+
+5. **Wrote 33 tests** in `tests/ZMachine.Tests/InstructionDecoderTests.cs`:
+   - Long form: all 4 operand type combinations (small/small, var/small,
+     small/var, var/var)
+   - Short form: large constant, small constant, variable, zero-op
+   - Variable form: 2OP encoding, VAR with 3 operands, all 4 operands,
+     zero operands, single operand
+   - Extended form: basic decode, no operands
+   - Double-variable: call_vs2 with 7 operands, call_vn2 with 8 operands
+   - Store decoding: stack push (var 0), local, global
+   - Branch decoding: short offset true/false, rfalse, rtrue, long offset
+     positive/negative/zero
+   - Combined store+branch
+   - Real instruction from zork1.z3 at PC $4F05
+   - Address tracking, sequential decode, edge cases
+
+6. **All 113 tests pass** (33 decoder + 38 header + 30 memory + 4 console
+   + 8 framework).
+
+#### Design Decisions
+
+**Store and branch decoding separated from Decode**
+
+`DecodeStore` and `DecodeBranch` are separate methods rather than being
+integrated into `Decode`. This is because the decoder doesn't know which
+opcodes store and which branch — that knowledge lives in the opcode table
+(Task 2.2/2.4). The caller will look up the opcode metadata and call the
+appropriate continuation methods. This keeps the decoder focused on byte
+parsing without needing to embed the full opcode table.
+
+**InstructionTestMemory pattern**
+
+Tests need to decode at address 0 for readability, but Memory requires a
+valid header. The `InstructionTestMemory` helper creates a valid V3 story
+file, then overwrites dynamic memory at address 0 with the test bytes.
+This avoids putting test bytes at offset $40 and adjusting every address
+assertion.
+
+**Struct vs class for Instruction**
+
+Used `struct` rather than `class` for `Instruction`. Instructions are
+decoded, processed, and discarded — never stored in collections or
+passed by reference across long-lived scopes. Structs avoid heap
+allocation in the tight decode-dispatch loop. The `ref` parameter in
+`DecodeStore`/`DecodeBranch` keeps mutation efficient.
+
+#### Spec Interpretation Notes
+
+**Variable form bit 5 semantics**: When bit 5 = 0, the instruction is
+classified as 2OP despite using variable-form encoding. This means a
+2OP instruction can receive up to 4 operands through the variable form's
+type byte — useful for opcodes like `je` which can compare against
+multiple values.
+
+**Double-variable opcodes**: Only call_vs2 (VAR:12, $EC) and call_vn2
+(VAR:26, $FA) use two type bytes. The second type byte is only read if
+the first type byte uses all 4 slots (no Omitted entries in the first
+byte). If the first byte has an Omitted entry, the second byte is not
+read.
+
+---
