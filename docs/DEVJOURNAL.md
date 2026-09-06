@@ -630,3 +630,83 @@ returns the current frame count and THROW unwinds to a target count.
 The `FrameCount` property on `CallStack` supports this directly.
 
 ---
+
+## Phase 3: Text System
+
+### Task 3.1 — Z-Character Decoding and Alphabet Tables
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Created `TextDecoder` class** (`src/ZMachine.Core/TextDecoder.cs`) —
+   decodes Z-strings (packed 5-bit Z-characters) into readable strings.
+   Handles the three default alphabet tables (A0 lowercase, A1 uppercase,
+   A2 punctuation/digits), shift characters, the 10-bit ZSCII escape
+   sequence, and abbreviation expansion with recursion guards.
+
+2. **Implemented version-dependent shift semantics**:
+   - V1–2: z-chars 2,3 are single-shifts; z-chars 4,5 are shift-locks
+   - V3+: z-chars 4,5 are single-shifts; z-chars 1,2,3 are abbreviation triggers
+   - V1: z-char 1 is a newline (not an abbreviation)
+   - V2: only z-char 1 triggers abbreviation lookup
+
+3. **Implemented custom alphabet tables** (V5+): when header word $34
+   is non-zero, reads 78 bytes (3×26) as custom alphabets replacing the
+   defaults. Each byte is interpreted as a ZSCII code.
+
+4. **Verified against real story files** — decoded object short names from
+   minizork.z3 ("forest", "torch", "lunch", "Up a Tree", "Kitchen",
+   "Sandy Beach", "brave adventurer") and zork1.z3 ("ZORK owner's manual").
+
+5. **Wrote 23 tests** covering:
+   - Real story file decoding (7 tests with minizork and zork1)
+   - Synthetic Z-string packing and end-bit detection (3 tests)
+   - 10-bit ZSCII escape sequences (2 tests)
+   - Abbreviation expansion and recursion guard (3 tests)
+   - V1/V2 version-specific behavior (3 tests)
+   - Custom alphabet tables (2 tests)
+   - Edge cases: empty/padded strings, all spaces, trailing shifts (3 tests)
+
+#### Design Decisions
+
+**Constructor takes addresses, not Header**
+
+The TextDecoder constructor takes `memory`, `version`, `abbreviationTableAddress`,
+and `alphabetTableAddress` rather than a `Header` object. This keeps the
+decoder testable with synthetic memory (no need to construct a full valid
+header) and avoids a circular dependency path if Header ever needs to
+decode text.
+
+**Pre-extract all Z-chars, then decode**
+
+The decoder first reads all 16-bit words into a flat list of Z-characters,
+then walks the list to produce output. The alternative — decoding on the
+fly as words are read — would complicate the shift/abbreviation state
+machine. Since Z-strings are short (typically a few words), the list
+allocation is negligible.
+
+**V1 A2 alphabet as a separate table**
+
+V1 uses a different A2 alphabet from V2+. Rather than branching inside
+the character lookup, a separate `V1A2` table is selected at construction
+time. This keeps the hot decode loop branch-free for the common case.
+
+#### Spec Interpretation Notes
+
+**V1–2 shift semantics differ from V3+**: In V1–2, z-chars 2 and 3 are
+single-shift characters (shift to next/previous alphabet), while 4 and 5
+are shift-locks (sticky shifts). In V3+, this is reversed: 4 and 5 are
+single-shifts, and 1, 2, 3 become abbreviation triggers instead.
+ZSpec11 "Encoded text" clarifies that even in V3+, consecutive 4/5 codes
+should NOT be treated as shift-locks — only as repeated single-shifts.
+
+**Abbreviation recursion is illegal**: ZSpec S3.3 explicitly states that
+an abbreviation string must not itself use abbreviations. The decoder
+throws on recursive expansion rather than silently producing garbage.
+
+**10-bit ZSCII escape**: When in A2, z-char 6 signals that the next two
+z-characters form a 10-bit ZSCII code (hi×32 + lo). This can represent
+any ZSCII code 0–1023, though in practice only printable codes are used.
+
+---
