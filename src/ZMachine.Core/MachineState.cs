@@ -1,15 +1,15 @@
 namespace ZMachine.Core;
 
 /// <summary>
-/// Runtime execution state of the Z-Machine: program counter, evaluation
-/// stack, call stack with local variables, and global variable access
-/// through memory. This is the mutable state that changes as the game
-/// executes.
+/// Runtime execution state of the Z-Machine: program counter, call stack
+/// with per-frame evaluation stacks and local variables, and global
+/// variable access through memory.
 /// </summary>
 /// <remarks>
-/// ZSpec S6 — Routines, call stack, local variables.
-/// ZSpec S6.3 — The stack: variable 0 refers to the top of the evaluation
-/// stack. Reading pops, writing pushes, except in indirect references.
+/// ZSpec S5 — Call stack and routines.
+/// ZSpec S6.3 — The stack: variable 0 refers to the top of the current
+/// frame's evaluation stack. Reading pops, writing pushes, except in
+/// indirect references.
 /// ZSpec S6.4 — Global variables are stored in a 240-word table in memory.
 /// </remarks>
 public class MachineState
@@ -20,30 +20,8 @@ public class MachineState
     /// <summary>The current program counter (byte address).</summary>
     public int PC { get; set; }
 
-    /// <summary>
-    /// The evaluation stack. Variable 0 reads (pop) and writes (push)
-    /// operate on this stack.
-    /// </summary>
-    /// <remarks>
-    /// ZSpec S6.3 — Each routine invocation has its own evaluation stack.
-    /// For now this is a single shared stack; the call stack (Task 7.1)
-    /// will partition it per frame.
-    /// </remarks>
-    public Stack<ushort> Stack { get; } = new();
-
-    /// <summary>
-    /// Local variables for the current routine (1-indexed, up to 15).
-    /// Slot 0 is unused — local variable 1 is at index 1.
-    /// </summary>
-    /// <remarks>
-    /// ZSpec S6.1 — A routine has between 0 and 15 local variables.
-    /// In V1–4, initial values are given in the routine header.
-    /// In V5+, locals are initialized to 0.
-    /// </remarks>
-    public ushort[] Locals { get; set; } = new ushort[16];
-
-    /// <summary>Number of local variables in the current routine (0–15).</summary>
-    public int LocalCount { get; set; }
+    /// <summary>The call stack of routine frames.</summary>
+    public CallStack CallStack { get; } = new();
 
     /// <summary>
     /// Creates a new machine state bound to the given memory.
@@ -60,32 +38,43 @@ public class MachineState
     }
 
     /// <summary>
+    /// The current call frame's evaluation stack. Convenience accessor.
+    /// </summary>
+    private Stack<ushort> EvalStack => CurrentFrameRequired.EvalStack;
+
+    /// <summary>
+    /// Returns the current frame, throwing if there is none.
+    /// </summary>
+    private CallFrame CurrentFrameRequired =>
+        CallStack.CurrentFrame ??
+        throw new InvalidOperationException("No active call frame — push a frame before executing instructions.");
+
+    /// <summary>
     /// Reads the value of a variable.
     /// </summary>
     /// <remarks>
     /// ZSpec S6.3 — Variable 0 = stack (pop), 1–15 = locals, 16–255 = globals.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown if reading from an empty stack or an out-of-range local.
-    /// </exception>
     public ushort ReadVariable(byte variable)
     {
         if (variable == 0)
         {
-            if (Stack.Count == 0)
+            var stack = EvalStack;
+            if (stack.Count == 0)
                 throw new InvalidOperationException("Stack underflow: attempted to pop from an empty evaluation stack.");
-            return Stack.Pop();
+            return stack.Pop();
         }
 
         if (variable <= 15)
         {
-            if (variable > LocalCount)
+            var frame = CurrentFrameRequired;
+            if (variable > frame.LocalCount)
                 throw new InvalidOperationException(
-                    $"Read from local variable {variable} but routine only has {LocalCount} locals.");
-            return Locals[variable];
+                    $"Read from local variable {variable} but routine only has {frame.LocalCount} locals.");
+            return frame.Locals[variable];
         }
 
-        // ZSpec S6.4 — Global variable g (16–255) is stored at globals_address + 2*(g-16)
+        // ZSpec S6.4 — Global variable g (16–255) at globals_address + 2*(g-16)
         int globalIndex = variable - 16;
         return _memory.ReadWord(_globalsAddress + globalIndex * 2);
     }
@@ -100,20 +89,20 @@ public class MachineState
     {
         if (variable == 0)
         {
-            Stack.Push(value);
+            EvalStack.Push(value);
             return;
         }
 
         if (variable <= 15)
         {
-            if (variable > LocalCount)
+            var frame = CurrentFrameRequired;
+            if (variable > frame.LocalCount)
                 throw new InvalidOperationException(
-                    $"Write to local variable {variable} but routine only has {LocalCount} locals.");
-            Locals[variable] = value;
+                    $"Write to local variable {variable} but routine only has {frame.LocalCount} locals.");
+            frame.Locals[variable] = value;
             return;
         }
 
-        // ZSpec S6.4 — Global variable g (16–255) at globals_address + 2*(g-16)
         int globalIndex = variable - 16;
         _memory.WriteWord(_globalsAddress + globalIndex * 2, value);
     }
@@ -131,9 +120,10 @@ public class MachineState
     {
         if (variable == 0)
         {
-            if (Stack.Count == 0)
+            var stack = EvalStack;
+            if (stack.Count == 0)
                 throw new InvalidOperationException("Stack underflow: indirect read from an empty evaluation stack.");
-            return Stack.Peek();
+            return stack.Peek();
         }
 
         return ReadVariable(variable);
@@ -151,10 +141,11 @@ public class MachineState
     {
         if (variable == 0)
         {
-            if (Stack.Count == 0)
+            var stack = EvalStack;
+            if (stack.Count == 0)
                 throw new InvalidOperationException("Stack underflow: indirect write to an empty evaluation stack.");
-            Stack.Pop();
-            Stack.Push(value);
+            stack.Pop();
+            stack.Push(value);
             return;
         }
 
@@ -183,13 +174,6 @@ public class MachineState
     /// ZSpec11 "@jump" — Target = address_after_branch + offset - 2.
     /// Offset 0 = rfalse, offset 1 = rtrue.
     /// </remarks>
-    /// <param name="condition">The boolean result of the branching opcode.</param>
-    /// <param name="branch">The decoded branch information.</param>
-    /// <param name="addressAfterBranch">
-    /// The byte address immediately after the branch data (i.e.,
-    /// Instruction.NextAddress after DecodeBranch has been called).
-    /// </param>
-    /// <returns>The action the execution engine should take.</returns>
     public static BranchResult ExecuteBranch(bool condition, BranchInfo branch, int addressAfterBranch)
     {
         bool takeBranch = condition == branch.BranchOnTrue;
