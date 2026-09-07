@@ -293,7 +293,7 @@ public class ObjectTable
 
     #endregion
 
-    #region Property Pointer
+    #region Property Table
 
     /// <summary>
     /// Returns the byte address of the object's property table.
@@ -304,6 +304,280 @@ public class ObjectTable
     {
         int addr = ObjectAddress(obj) + _attrBytes + 3 * _pointerSize;
         return _memory.ReadWord(addr);
+    }
+
+    /// <summary>
+    /// Returns the byte address where the property data begins (after
+    /// the short name). This is the start of the first property block.
+    /// </summary>
+    private int GetPropertyDataStart(int obj)
+    {
+        int tableAddr = GetPropertyTableAddress(obj);
+        int nameLen = _memory.ReadByte(tableAddr);
+        return tableAddr + 1 + nameLen * 2;
+    }
+
+    /// <summary>
+    /// Returns the address of the given property's data block, or 0 if
+    /// the object does not have that property. Also outputs the data length.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S12.4 — Properties are stored in descending numerical order
+    /// and terminated by a zero size byte. The size byte format differs
+    /// between V1-3 and V4+.
+    /// </remarks>
+    private int FindProperty(int obj, int prop, out int dataLen)
+    {
+        int addr = GetPropertyDataStart(obj);
+
+        while (true)
+        {
+            int sizeByte = _memory.ReadByte(addr);
+            if (sizeByte == 0)
+            {
+                dataLen = 0;
+                return 0;
+            }
+
+            int propNum;
+            int propDataAddr;
+
+            if (_version <= 3)
+            {
+                // ZSpec S12.4.1 — V1-3: size byte = 32*(len-1) + prop_number.
+                // Bottom 5 bits = property number, top 3 = data length - 1.
+                propNum = sizeByte & 0x1F;
+                dataLen = (sizeByte >> 5) + 1;
+                propDataAddr = addr + 1;
+            }
+            else
+            {
+                // ZSpec S12.4.2 — V4+: bit 7 selects short or long form.
+                propNum = sizeByte & 0x3F;
+
+                if ((sizeByte & 0x80) != 0)
+                {
+                    // Long form: second byte holds length in bits 5-0.
+                    int secondByte = _memory.ReadByte(addr + 1);
+                    dataLen = secondByte & 0x3F;
+                    // ZSpec S12.4.2 — length of 0 means 64 bytes.
+                    if (dataLen == 0)
+                        dataLen = 64;
+                    propDataAddr = addr + 2;
+                }
+                else
+                {
+                    // Short form: bit 6 selects 1 or 2 byte data.
+                    dataLen = (sizeByte & 0x40) != 0 ? 2 : 1;
+                    propDataAddr = addr + 1;
+                }
+            }
+
+            if (propNum == prop)
+                return propDataAddr;
+
+            // Properties are in descending order — if we've passed the
+            // target, it doesn't exist.
+            if (propNum < prop)
+            {
+                dataLen = 0;
+                return 0;
+            }
+
+            addr = propDataAddr + dataLen;
+        }
+    }
+
+    /// <summary>
+    /// Returns the data address of the given property on the object,
+    /// or 0 if the object does not have that property.
+    /// </summary>
+    public int GetPropertyAddress(int obj, int prop)
+    {
+        return FindProperty(obj, prop, out _);
+    }
+
+    /// <summary>
+    /// Returns the value of the given property on the object. For 1-byte
+    /// properties, returns the byte value; for 2-byte properties, the
+    /// big-endian word. If the property is absent, returns the default
+    /// from the property defaults table.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S12.4 — @get_prop on a property with more than 2 bytes of
+    /// data is undefined behavior. We read only the first 1 or 2 bytes.
+    /// </remarks>
+    public ushort GetProperty(int obj, int prop)
+    {
+        int dataAddr = FindProperty(obj, prop, out int dataLen);
+
+        if (dataAddr == 0)
+            return GetPropertyDefault(prop);
+
+        return dataLen == 1
+            ? _memory.ReadByte(dataAddr)
+            : _memory.ReadWord(dataAddr);
+    }
+
+    /// <summary>
+    /// Sets the value of the given property on the object. Writes 1 or 2
+    /// bytes depending on the property's stored data length.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S12.4 — @put_prop stores the value in the property's data
+    /// block. The property must exist on the object.
+    /// </remarks>
+    public void SetProperty(int obj, int prop, ushort value)
+    {
+        int dataAddr = FindProperty(obj, prop, out int dataLen);
+
+        if (dataAddr == 0)
+            throw new InvalidOperationException(
+                $"Object {obj} does not have property {prop}.");
+
+        if (dataLen == 1)
+            _memory.WriteByte(dataAddr, (byte)(value & 0xFF));
+        else
+            _memory.WriteWord(dataAddr, value);
+    }
+
+    /// <summary>
+    /// Returns the property number of the next property after the given
+    /// one, or the first property if prop is 0. Returns 0 if there are
+    /// no more properties.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S12.4 — @get_next_prop with prop=0 returns the first property.
+    /// Properties are stored in descending order.
+    /// </remarks>
+    public int GetNextProperty(int obj, int prop)
+    {
+        int addr = GetPropertyDataStart(obj);
+
+        if (prop == 0)
+        {
+            // Return the first property's number.
+            int sizeByte = _memory.ReadByte(addr);
+            if (sizeByte == 0)
+                return 0;
+
+            return _version <= 3
+                ? sizeByte & 0x1F
+                : sizeByte & 0x3F;
+        }
+
+        // Walk until we find prop, then return the next one.
+        while (true)
+        {
+            int sizeByte = _memory.ReadByte(addr);
+            if (sizeByte == 0)
+                throw new InvalidOperationException(
+                    $"Property {prop} not found on object {obj}.");
+
+            int propNum;
+            int dataLen;
+            int propDataAddr;
+
+            if (_version <= 3)
+            {
+                propNum = sizeByte & 0x1F;
+                dataLen = (sizeByte >> 5) + 1;
+                propDataAddr = addr + 1;
+            }
+            else
+            {
+                propNum = sizeByte & 0x3F;
+                if ((sizeByte & 0x80) != 0)
+                {
+                    int secondByte = _memory.ReadByte(addr + 1);
+                    dataLen = secondByte & 0x3F;
+                    if (dataLen == 0)
+                        dataLen = 64;
+                    propDataAddr = addr + 2;
+                }
+                else
+                {
+                    dataLen = (sizeByte & 0x40) != 0 ? 2 : 1;
+                    propDataAddr = addr + 1;
+                }
+            }
+
+            if (propNum == prop)
+            {
+                // Found it — return the next property's number.
+                int nextAddr = propDataAddr + dataLen;
+                int nextSizeByte = _memory.ReadByte(nextAddr);
+                if (nextSizeByte == 0)
+                    return 0;
+
+                return _version <= 3
+                    ? nextSizeByte & 0x1F
+                    : nextSizeByte & 0x3F;
+            }
+
+            addr = propDataAddr + dataLen;
+        }
+    }
+
+    /// <summary>
+    /// Returns the number of data bytes for the property at the given
+    /// data address. The address must point to a property's data block
+    /// (not the size byte). Passing address 0 returns 0.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S12.4 — @get_prop_len: the size byte(s) precede the data.
+    /// ZSpec11 "@get_prop_len" — get_prop_len 0 must return 0.
+    /// </remarks>
+    public int GetPropertyLength(int address)
+    {
+        // ZSpec11: "@get_prop_len 0 must return 0"
+        if (address == 0)
+            return 0;
+
+        if (_version <= 3)
+        {
+            // The size byte is the byte before the data address.
+            int sizeByte = _memory.ReadByte(address - 1);
+            return (sizeByte >> 5) + 1;
+        }
+        else
+        {
+            // V4+: the byte before the data might be the first or second
+            // size byte. If bit 7 is set, it's the second size byte.
+            int prevByte = _memory.ReadByte(address - 1);
+            if ((prevByte & 0x80) != 0)
+            {
+                // Second size byte: bits 5-0 = length.
+                int len = prevByte & 0x3F;
+                return len == 0 ? 64 : len;
+            }
+            else
+            {
+                // First (only) size byte: bit 6 selects 1 or 2.
+                return (prevByte & 0x40) != 0 ? 2 : 1;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the byte length of the object's short name Z-string,
+    /// including the length-in-words prefix byte.
+    /// </summary>
+    public int GetShortNameLengthBytes(int obj)
+    {
+        int tableAddr = GetPropertyTableAddress(obj);
+        int nameLen = _memory.ReadByte(tableAddr);
+        return 1 + nameLen * 2;
+    }
+
+    /// <summary>
+    /// Returns the address of the short name Z-string for the given object.
+    /// The Z-string starts at the property table address + 1 (after the
+    /// length-in-words byte).
+    /// </summary>
+    public int GetShortNameAddress(int obj)
+    {
+        return GetPropertyTableAddress(obj) + 1;
     }
 
     #endregion
