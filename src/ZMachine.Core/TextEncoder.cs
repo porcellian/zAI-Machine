@@ -204,6 +204,10 @@ public class TextEncoder
     {
         int currentBase = lockedAlphabet >= 0 ? lockedAlphabet : 0;
 
+        // Already in the target alphabet — no shift z-char needed.
+        if (currentBase == targetAlphabet)
+            return;
+
         if (_version <= 2)
         {
             // V1-2: check if next character is also in targetAlphabet.
@@ -316,9 +320,11 @@ public class TextEncoder
         if (zchars.Count <= maxZChars)
             return false;
 
-        // Walk through z-chars to find if truncation at maxZChars
-        // breaks a multi-z-char construction.
+        // Walk z-chars tracking shift-lock state so we know which
+        // alphabet each shift targets. Z-char 6 is the ZSCII escape
+        // introducer only in A2; in A0/A1 it's an ordinary character.
         int pos = 0;
+        int walkLocked = 0;
         while (pos < maxZChars)
         {
             byte zc = zchars[pos];
@@ -329,12 +335,20 @@ public class TextEncoder
                 continue;
             }
 
-            // Shift: 2, 3, 4, 5
+            // Shift: 2, 3 (single), 4, 5 (lock) — V1-2 only path.
             if (zc >= 2 && zc <= 5)
             {
+                bool isUp = (zc == 2 || zc == 4);
+                int target = isUp
+                    ? (walkLocked + 1) % 3
+                    : (walkLocked + 2) % 3;
+
+                if (zc >= 4)
+                    walkLocked = target;
+
                 pos++; // past the shift
 
-                if (pos < zchars.Count && zchars[pos] == 6)
+                if (target == 2 && pos < zchars.Count && zchars[pos] == 6)
                     pos += 3; // ZSCII escape: 6 + hi + lo
                 else
                     pos++; // shifted char

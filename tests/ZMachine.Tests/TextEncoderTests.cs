@@ -484,6 +484,84 @@ public class TextEncoderTests
         Assert.Equal(new byte[] { 0x14, 0xE5, 0x94, 0xA5 }, encoded);
     }
 
+    [Fact]
+    public void V2_ZsciiEscape_WhenAlreadyLockedInA2_NoSpuriousShift()
+    {
+        // "12@": '1' and '2' shift-lock into A2, then '@' is not in any
+        // alphabet so it uses the ZSCII escape. The escape must not emit
+        // a shift z-char when already locked in A2.
+        var encoder = new TextEncoder(2);
+        byte[] encoded = encoder.EncodeForDictionary("12@");
+
+        // Expected z-chars: [5, 9, 10, 6, hi(@=64), lo(@=64)]
+        //   5 = shift-lock to A2
+        //   9 = '1' in A2 (index 3 + 6)
+        //  10 = '2' in A2 (index 4 + 6)
+        //   6 = ZSCII escape introducer
+        //   2 = 64 >> 5 = 2
+        //   0 = 64 & 0x1F = 0
+        // Packed into word 0: (5 << 10) | (9 << 5) | 10 = 0x1529 + end-bit → 0x952A
+        // Word 1: (6 << 10) | (2 << 5) | 0 = 0x1840 + end-bit = 0x9840
+        // Actually V2 has 2 words (4 bytes), end-bit semantics may vary.
+        // The key assertion: decoding the result must not contain 'A' or
+        // other garbage from a spurious shift to A1.
+
+        // Simpler assertion: the encoded output should be exactly 4 bytes
+        // and the z-char stream should NOT contain a shift-down (3) before
+        // the escape marker (6).
+        Assert.Equal(4, encoded.Length);
+
+        // Unpack z-chars from the two words.
+        int w0 = (encoded[0] << 8) | encoded[1];
+        int w1 = (encoded[2] << 8) | encoded[3];
+        byte[] zchars =
+        [
+            (byte)((w0 >> 10) & 0x1F),
+            (byte)((w0 >> 5) & 0x1F),
+            (byte)(w0 & 0x1F),
+            (byte)((w1 >> 10) & 0x1F),
+            (byte)((w1 >> 5) & 0x1F),
+            (byte)(w1 & 0x1F),
+        ];
+
+        // z-chars[0] = 5 (shift-lock to A2)
+        Assert.Equal(5, zchars[0]);
+        // z-chars[1] = 9 ('1')
+        Assert.Equal(9, zchars[1]);
+        // z-chars[2] = 10 ('2')
+        Assert.Equal(10, zchars[2]);
+        // z-chars[3] = 6 (ZSCII escape), NOT 3 (shift-down)
+        Assert.Equal(6, zchars[3]);
+    }
+
+    [Fact]
+    public void V2_ShiftToA1_ZChar6IsLetterA_NotEscapeIntroducer()
+    {
+        // "abcdAxyz" — a,b,c,d in A0, then shift-up to A1, 'A' = A1
+        // index 0 = z-char 6. Truncated to 6 z-chars the construction is
+        // complete (shift + 1 char), so the end-bit must be set.
+        var encoder = new TextEncoder(2);
+        byte[] encoded = encoder.EncodeForDictionary("abcdAxyz");
+
+        // Untruncated z-chars: [6,7,8,9, 2,6, 29,30,31]
+        //   a=6, b=7, c=8, d=9 (A0 direct)
+        //   2 = single-shift-up (A0→A1)
+        //   6 = 'A' (A1 index 0)
+        //   x=29, y=30, z=31 (A0)
+        // Truncated to 6: [6,7,8,9, 2,6] — complete.
+        // Packed word 1: (6<<10)|(7<<5)|8 = 0x18E8
+        // Packed word 0: (9<<10)|(2<<5)|6 = 0x2446
+        // End-bit on word 1: 0x18E8 | 0x8000 = not word 0...
+        // Actually: word0 = zchars[0..2], word1 = zchars[3..5]
+        // word0: (6<<10)|(7<<5)|8 = 0x18E8
+        // word1: (9<<10)|(2<<5)|6 = 0x2446 + end-bit = 0xA446
+
+        // The end-bit must be set (bit 15 of the last word).
+        int lastWord = (encoded[2] << 8) | encoded[3];
+        Assert.True((lastWord & 0x8000) != 0,
+            "End-bit should be set — truncation did not break a multi-z-char construction");
+    }
+
     #endregion
 
     #region Helpers
