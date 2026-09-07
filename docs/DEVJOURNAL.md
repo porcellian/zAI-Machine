@@ -1029,3 +1029,74 @@ bytes, and correct static base word at 0x0E.
 - Property default range: 0 and 32 throw (1)
 
 ---
+
+### Task 4.2 — Property System
+
+**Date**: 2026-09-07
+**Branch**: `feature/4.1-object-table` (extended, same branch as 4.1)
+**Files**: `src/ZMachine.Core/ObjectTable.cs` (extended), `tests/ZMachine.Tests/ObjectTableTests.cs` (extended)
+
+#### Design Decisions
+
+**Extending ObjectTable rather than a separate class**: Properties are
+tightly coupled to the object entry's property pointer, so the methods
+belong on `ObjectTable`. The private `FindProperty` helper centralizes
+property-list walking and size-byte decoding.
+
+**V1-3 size byte layout**: `size_byte = 32*(data_len-1) + prop_number`.
+Bottom 5 bits = property number, top 3 bits = data length minus one
+(1-8 bytes). TASKS.md had the bits reversed (top 5 = prop, bottom 3 =
+len) — caught by testing against zork1.z3 where property numbers are
+5-bit values (up to 31).
+
+**V4+ two-form size byte**: Bit 7=0 is the short form — bit 6 selects
+1 or 2 byte data, bits 5-0 hold the property number. Bit 7=1 is the
+long form — a second byte follows where bits 5-0 hold the data length
+(0 means 64 bytes, per spec). The second byte also has bit 7 set, which
+`GetPropertyLength` uses to distinguish which byte precedes the data.
+
+**Early exit via descending order**: `FindProperty` returns 0 as soon as
+it encounters a property number less than the target, since properties
+are stored in strictly descending order.
+
+**GetPropertyLength(0) = 0**: Explicitly required by ZSpec11 for
+`@get_prop_len`. Implemented as a guard at the top of the method.
+
+**GetProperty on large properties**: The spec says `@get_prop` on
+properties with more than 2 bytes is undefined. We read the first 2
+bytes as a word (or 1 byte if `data_len == 1`), matching Frotz behavior.
+
+#### Real Story File Verification
+
+Decoded zork1.z3 object 160 (mailbox) property list:
+- Prop 18: 4 bytes, data at 0x1A40, first word = 0x453F
+- Prop 17: 2 bytes, data at 0x1A45, value = 0x6E94
+- Prop 16: 1 byte, data at 0x1A48, value = 0xF4
+- Prop 10: 2 bytes, data at 0x1A4A, value = 0x000A
+
+Object 180 (West of House) has 10 properties: 31→30→29→28→27→25→24→21→17→5.
+Property 15 default = 0x0005 (only non-zero default in the table).
+
+Also verified czech.z5 V4+ format: object 5 has property 7 in long form
+(2-byte size header, 6 bytes data) and properties 5 and 4 in short form.
+
+### Test Coverage (29 new property tests, 62 total ObjectTable tests)
+
+- Real story property reads: mailbox 4-byte/2-byte/1-byte properties (3)
+- Absent property returns default from defaults table (1)
+- GetNextProperty from 0 returns first property (1)
+- GetNextProperty full chain walk: mailbox (4 props), West of House (10 props) (2)
+- GetPropertyAddress: present returns data address, absent returns 0 (2)
+- GetPropertyLength: V3 size byte decoding for 1/2/4 byte props (1)
+- GetPropertyLength(0) returns 0 per ZSpec11 (1)
+- Short name address and length (2)
+- Synthetic V3: get 1-byte/2-byte property, absent returns default (3)
+- Synthetic V3: set 1-byte/2-byte property, set absent throws (3)
+- Synthetic V3: GetNextProperty from 0, chain walk, not-found throws (3)
+- Synthetic V3: GetPropertyLength from data address (1)
+- V5 short form: 1-byte (bit 6=0) and 2-byte (bit 6=1) (2)
+- V5 long form: 6-byte data read (1)
+- V5 GetPropertyLength: short form and long form (2)
+- V5 GetNextProperty full chain (1)
+
+---
