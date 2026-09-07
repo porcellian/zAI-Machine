@@ -198,24 +198,21 @@ public class ControlFlowOps
         while (_state.CallStack.FrameCount > 0)
             _state.CallStack.PopFrame();
 
-        // ZSpec S5 — Initial PC is at header byte $06 (V1–5) or unpacked
-        // routine address at $06 (V6).
-        int initialPC;
         if (_version == 6)
         {
+            // ZSpec S5 — V6: header $06 is a packed routine address.
+            // Must enter the routine properly (read header, init locals,
+            // push frame) rather than jumping to the raw address.
             ushort packed = _memory.ReadWord(0x06);
-            initialPC = AddressHelper.UnpackRoutineAddress(packed, _version, _routinesOffset);
-        }
-        else
-        {
-            initialPC = _memory.ReadWord(0x06);
+            Call(packed, [], 0, 0, true, 0);
+            return _state.PC;
         }
 
-        // V1–5: execution begins at a raw PC, not via a routine call,
-        // so push a base frame — MachineState requires one for eval-stack
-        // and local-variable access.
+        // V1–5/7/8: header $06 is a raw byte address of the first
+        // instruction. Push a base frame so the eval stack and locals
+        // are available immediately.
+        int initialPC = _memory.ReadWord(0x06);
         _state.CallStack.PushFrame(new CallFrame(0, 0, false, 0, 0));
-
         _state.PC = initialPC;
         return initialPC;
     }
