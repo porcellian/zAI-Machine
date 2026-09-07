@@ -484,6 +484,56 @@ public class TextEncoderTests
         Assert.Equal(new byte[] { 0x14, 0xE5, 0x94, 0xA5 }, encoded);
     }
 
+    [Fact]
+    public void V2_ZsciiEscape_WhenAlreadyLockedInA2_NoSpuriousShift()
+    {
+        // "12@": '1' and '2' shift-lock into A2, then '@' is not in any
+        // alphabet so it uses the ZSCII escape. The escape must not emit
+        // a shift z-char when already locked in A2.
+        var encoder = new TextEncoder(2);
+        byte[] encoded = encoder.EncodeForDictionary("12@");
+
+        // Expected z-chars: [5, 9, 10, 6, hi(@=64), lo(@=64)]
+        //   5 = shift-lock to A2
+        //   9 = '1' in A2 (index 3 + 6)
+        //  10 = '2' in A2 (index 4 + 6)
+        //   6 = ZSCII escape introducer
+        //   2 = 64 >> 5 = 2
+        //   0 = 64 & 0x1F = 0
+        // Packed into word 0: (5 << 10) | (9 << 5) | 10 = 0x1529 + end-bit → 0x952A
+        // Word 1: (6 << 10) | (2 << 5) | 0 = 0x1840 + end-bit = 0x9840
+        // Actually V2 has 2 words (4 bytes), end-bit semantics may vary.
+        // The key assertion: decoding the result must not contain 'A' or
+        // other garbage from a spurious shift to A1.
+
+        // Simpler assertion: the encoded output should be exactly 4 bytes
+        // and the z-char stream should NOT contain a shift-down (3) before
+        // the escape marker (6).
+        Assert.Equal(4, encoded.Length);
+
+        // Unpack z-chars from the two words.
+        int w0 = (encoded[0] << 8) | encoded[1];
+        int w1 = (encoded[2] << 8) | encoded[3];
+        byte[] zchars =
+        [
+            (byte)((w0 >> 10) & 0x1F),
+            (byte)((w0 >> 5) & 0x1F),
+            (byte)(w0 & 0x1F),
+            (byte)((w1 >> 10) & 0x1F),
+            (byte)((w1 >> 5) & 0x1F),
+            (byte)(w1 & 0x1F),
+        ];
+
+        // z-chars[0] = 5 (shift-lock to A2)
+        Assert.Equal(5, zchars[0]);
+        // z-chars[1] = 9 ('1')
+        Assert.Equal(9, zchars[1]);
+        // z-chars[2] = 10 ('2')
+        Assert.Equal(10, zchars[2]);
+        // z-chars[3] = 6 (ZSCII escape), NOT 3 (shift-down)
+        Assert.Equal(6, zchars[3]);
+    }
+
     #endregion
 
     #region Helpers

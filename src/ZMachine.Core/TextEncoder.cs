@@ -204,6 +204,10 @@ public class TextEncoder
     {
         int currentBase = lockedAlphabet >= 0 ? lockedAlphabet : 0;
 
+        // Already in the target alphabet — no shift z-char needed.
+        if (currentBase == targetAlphabet)
+            return;
+
         if (_version <= 2)
         {
             // V1-2: check if next character is also in targetAlphabet.
