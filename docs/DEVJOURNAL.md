@@ -1596,3 +1596,66 @@ serves both.
   zero re-randomizes, range 1 always returns 1 (5)
 
 ---
+
+### Task 6.2 — Variable, Memory, and Table Opcodes
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Implemented `VariableMemoryOps`** as a static class in Core with three
+   groups of opcodes:
+
+   **Variable opcodes** — all seven indirect-reference opcodes that use
+   `MachineState.ReadVariableIndirect`/`WriteVariableIndirect` so that
+   variable 0 peeks/replaces the stack top instead of pushing/popping:
+   - `@load`/`@store`: read/write a variable by number
+   - `@inc`/`@dec`: signed increment/decrement
+   - `@inc_chk`/`@dec_chk`: increment/decrement + signed branch check
+   - `@push`/`@pull`: stack push (direct) and pop-to-variable (indirect)
+
+   **Memory opcodes** — array access using base+index addressing:
+   - `@loadw`/`@loadb`: read word/byte at array + 2*index / array + index
+   - `@storew`/`@storeb`: write word/byte at array + 2*index / array + index
+
+   **Table opcodes**:
+   - `@scan_table`: searches for a value in a table. Form byte bit 7
+     selects word vs byte comparison; bottom 7 bits = entry length.
+     Returns (address, found) tuple.
+   - `@copy_table`: copies or zeroes memory. second=0 zeroes the source.
+     Positive size copies backward when second > first to avoid overlap
+     corruption. Negative size forces forward copy (allows fill patterns).
+
+#### Design Decisions
+
+**Static class**: Unlike `ArithmeticOps` (which is instantiated for
+`@random`'s RNG state), `VariableMemoryOps` is fully static — none of
+its methods need persistent state. They take `MachineState` or `Memory`
+as parameters.
+
+**@scan_table returns a tuple**: Rather than using out parameters or a
+custom type, `ScanTable` returns `(ushort Address, bool Found)`. The
+caller uses `Found` for the branch condition and `Address` for the store
+result. This keeps the API clean and matches the opcode's dual output.
+
+**@copy_table overlap handling**: The spec says positive size should copy
+safely (no corruption on overlap). The implementation copies backward
+when `second > first` (destination is ahead of source), which prevents
+overwriting source bytes before they're read. Negative size forces
+forward copy — this deliberately allows the overlap, enabling patterns
+like filling a region by copying a single byte forward repeatedly.
+
+### Test Coverage (38 tests)
+
+- @load/@store: local variable, stack peek/replace (4)
+- @inc/@dec: local, signed overflow/underflow, stack in-place (6)
+- @inc_chk/@dec_chk: increment+branch, no-branch, signed comparison (6)
+- @push/@pull: stack push order, pull to local, pull to stack (3)
+- @loadw/@loadb: base address, with index (4)
+- @storew/@storeb: base address, with index (4)
+- @scan_table: word found/not-found, byte found/not-found, larger entries,
+  first entry match (6)
+- @copy_table: basic copy, zero table, overlap forward (positive size),
+  negative size force forward, no overlap (5)
+
+---
