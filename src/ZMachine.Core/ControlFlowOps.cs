@@ -17,6 +17,10 @@ public class ControlFlowOps
     private readonly int _version;
     private readonly ushort _routinesOffset;
 
+    /// <summary>
+    /// Creates control-flow opcode handlers bound to the given memory and
+    /// machine state for a story of the given version.
+    /// </summary>
     public ControlFlowOps(Memory memory, MachineState state, int version, ushort routinesOffset = 0)
     {
         _memory = memory;
