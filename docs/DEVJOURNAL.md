@@ -1344,3 +1344,100 @@ Changed to "qqqqq" which genuinely has no dictionary entry.
 - Unsorted dictionary: linear search finds entry (1)
 
 ---
+
+### Task 5.4 — Input System
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Updated `IInputStream` interface** to add timeout parameters and a
+   `HasMore` property. The interface now exposes `ReadLine(int maxLength,
+   int timeoutTenths = 0)` returning a tuple of text and terminating
+   character, `ReadChar(int timeoutTenths = 0)` returning a ZSCII code,
+   and `bool HasMore` for file exhaustion detection.
+
+2. **Implemented `ConsoleInputStream`** (stream 0 — keyboard input).
+   Handles both blocking and timed input using `Console.ReadKey`. Timed
+   input uses a `Stopwatch`-based polling loop with 10ms sleep granularity,
+   resetting the timer on each keypress per ZSpec S10.7. The `MapKeyToZscii`
+   method maps `ConsoleKeyInfo` to ZSCII codes: cursor keys → 129-132,
+   function keys F1-F12 → 133-144, numpad 0-9 → 145-154, plus enter (13),
+   backspace (8), escape (27), and printable ASCII.
+
+3. **Implemented `FileInputStream`** (stream 1 — file playback). Uses a
+   `Queue<string>` of pre-loaded lines. Each `ReadLine` dequeues one line,
+   and `HasMore` returns false when the queue is empty. `ReadChar` dequeues
+   the first line and returns its first character. Truncation to `maxLength`
+   is handled at read time.
+
+4. **Implemented `InputStreamManager`** to handle `@input_stream` switching
+   between stream 0 (keyboard) and stream 1 (file). When file input is
+   exhausted after a read, the manager automatically reverts to stream 0.
+   The manager itself implements `IInputStream` so the interpreter can treat
+   it as a single input source.
+
+5. **Implemented `ReadHandler`** for `@read` (sread/aread) opcode logic.
+   Handles the V1-4 vs V5+ text buffer format divergence:
+   - V1-4: text starts at byte 1, null-terminated
+   - V5+: byte 1 = character count, text starts at byte 2, not null-terminated
+
+   Input is lowercased before writing to the buffer (ZSpec S10 requirement).
+   Tokenization delegates to the existing `Tokenizer` class with the
+   appropriate text offset. Returns 13 (enter) as the terminating character.
+
+#### Design Decisions
+
+**`ReadHandler` in Core, not IO**: The `ReadHandler` lives in `ZMachine.Core`
+because it operates on `Memory`, `Tokenizer`, and `Dictionary` — all Core
+types. It doesn't need the `IInputStream` directly; the interpreter will
+call `ReadLine` on the input stream and pass the resulting string to
+`ProcessRead`. This keeps the Core layer free of IO dependencies.
+
+**`ConsoleInputStream` timeout strategy**: Considered using `Task.Run` with
+`Console.ReadKey` and `CancellationToken`, but `Console.ReadKey` is a
+blocking call that can't be cancelled cleanly on all platforms. Instead,
+the timed `ReadLine` polls `Console.KeyAvailable` in a loop with 10ms
+sleep intervals and a `Stopwatch` for wall-clock accuracy. The timer
+resets after each keypress per ZSpec S10.7 — the timeout is between
+keypresses, not total.
+
+**`InputStreamManager` implements `IInputStream`**: The manager wraps both
+keyboard and file streams behind the same interface. This means the
+interpreter only needs one `IInputStream` reference. Auto-fallback on
+exhaustion happens inside `ReadLine`/`ReadChar` — the caller doesn't need
+to check.
+
+**`MapKeyToZscii` made public**: Originally `internal static`, but tests
+in the separate test project need access. Since it's a pure, stateless
+mapping function with no side effects, making it `public` is appropriate.
+
+#### Lessons Learned
+
+- **Timed input is platform-dependent**: `Console.ReadKey` blocks the
+  calling thread and can't be interrupted. The polling approach works but
+  adds ~10ms latency jitter. A GUI frontend (Avalonia) will use event-driven
+  input instead, so this is acceptable for the console fallback.
+
+- **V1-4 vs V5+ buffer format is easy to get wrong**: The off-by-one between
+  "text at byte 1" (V1-4) and "text at byte 2 with count at byte 1" (V5+)
+  must also be reflected in the `textBufferOffset` passed to the tokenizer
+  so word positions in the parse buffer are correct relative to the text
+  buffer start.
+
+### Test Coverage (23 tests)
+
+- FileInputStream: ReadLine returns first line, advances through lines,
+  returns empty on exhaustion, truncates to max length, ReadChar returns
+  first char, HasMore tracks state (6)
+- InputStreamManager: defaults to stream 0, switches to stream 1, reverts
+  on exhaustion, switches back to stream 0, ReadChar from file (5)
+- ReadHandler V3: writes text buffer (lowercased, null-terminated),
+  tokenizes "open mailbox" with correct dict addresses, returns 13,
+  lowercases input (4)
+- ReadHandler V5: writes text buffer (count byte + text, no null term),
+  skip tokenization when parse addr = 0, truncates long input (3)
+- Key mapping: enter→13, cursor keys→129-132, F1→133/F12→144,
+  printable ASCII passthrough, escape→27 (5)
+
+---

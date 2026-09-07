@@ -15,12 +15,30 @@ public interface IInputStream
     /// Reads a line of text input from the user.
     /// </summary>
     /// <param name="maxLength">Maximum number of characters to accept.</param>
-    /// <returns>The input string (without the terminating newline).</returns>
-    string ReadLine(int maxLength);
+    /// <param name="timeoutTenths">
+    /// Timeout in tenths of a second (0 = no timeout). V4+ timed input.
+    /// </param>
+    /// <returns>
+    /// The input string (without the terminating newline), and the
+    /// terminating ZSCII character (13 for enter, 0 if timed out).
+    /// </returns>
+    (string Text, int TerminatingChar) ReadLine(int maxLength, int timeoutTenths = 0);
 
     /// <summary>
     /// Reads a single keypress and returns its ZSCII code.
     /// </summary>
-    /// <returns>ZSCII code of the pressed key (e.g., 13 for Enter, 129–154 for cursor/function keys).</returns>
-    int ReadChar();
+    /// <param name="timeoutTenths">
+    /// Timeout in tenths of a second (0 = no timeout). V4+ timed input.
+    /// </param>
+    /// <returns>
+    /// ZSCII code of the pressed key (13 for Enter, 129-154 for
+    /// cursor/function keys, 0 if timed out).
+    /// </returns>
+    int ReadChar(int timeoutTenths = 0);
+
+    /// <summary>
+    /// Whether this input stream has more input available (relevant for
+    /// file playback streams that can be exhausted).
+    /// </summary>
+    bool HasMore { get; }
 }
