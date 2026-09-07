@@ -760,3 +760,98 @@ game-specific words like "Cyclops " and "thief ".
 so only entries 0–31 are used. V1 has no abbreviation support at all.
 
 ---
+
+## Task 3.3 — ZSCII Character Set and Unicode Output
+
+**Date**: 2026-09-06
+**Branch**: `feature/3.3-zscii-unicode`
+**Status**: Complete
+
+### What Was Done
+
+Implemented `ZsciiEncoder` — a bidirectional converter between ZSCII
+character codes and Unicode code points. The class handles the full
+ZSCII character set: ASCII range (32–126), newline (13), null (0),
+and the "extra characters" range (155–251) which defaults to 69
+accented Latin characters from ZSpec S3.8.5.
+
+Key features:
+- **Default extra characters**: 69 entries (ZSCII 155–223) covering
+  Western European accented characters (ä, ö, ü, ß, etc.), ligatures
+  (æ, œ), and special punctuation (£, ¡, ¿, », «).
+- **Unicode translation table**: V5+ games can override the defaults
+  via a table in the header extension (word 1). The table starts with
+  a count byte followed by 16-bit Unicode code points.
+- **Special quote characters**: ZSCII $27 (39) maps to U+2019 (right
+  single quote/apostrophe), $60 (96) to U+2018 (left single quote).
+  This follows ZSpec11's clarification that these should NOT be
+  rendered as neutral ASCII quote and grave accent.
+- **Control code filtering**: Unicode U+0000–U+001F and U+007F–U+009F
+  are rejected as control codes per ZSpec11. Newline (U+000A) is
+  handled before the filter since it maps to ZSCII 13.
+- **BMP validation**: Only U+0000–U+FFFF supported (no non-BMP).
+- **Reverse lookup**: `UnicodeToZscii()` builds a dictionary from the
+  active extra characters table for O(1) reverse mapping.
+
+### Design Decisions
+
+**Returning `char?` vs exceptions**: `ZsciiToUnicode` returns `null`
+for undefined codes rather than throwing. This lets callers decide
+how to handle unmapped characters — some contexts require silent
+filtering (output), others may want substitution ('?'). This is more
+flexible than forcing a specific error policy at the encoder level.
+
+**Newline before control code check**: In `UnicodeToZscii`, the newline
+check (`\n` → 13) must precede the control code rejection because
+U+000A falls in the control code range U+0000–U+001F. Without this
+ordering, newlines would be incorrectly rejected.
+
+**Control code replacement in custom tables**: If a Unicode translation
+table contains a control code or non-BMP code point, that entry is
+replaced with '?' rather than throwing. Games with malformed tables
+should still be playable.
+
+**Separate class from TextDecoder**: `ZsciiEncoder` is independent of
+`TextDecoder` by design. `TextDecoder` operates on Z-characters (5-bit
+codes packed into words), while `ZsciiEncoder` maps between ZSCII
+(10-bit codes) and Unicode. They serve different layers: Z-char
+decoding produces ZSCII codes, which then pass through `ZsciiEncoder`
+for final Unicode output. Currently `TextDecoder` maps directly via
+the alphabet tables, but a future refactoring could route 10-bit ZSCII
+escapes and extra characters through `ZsciiEncoder`.
+
+### Spec Interpretation Notes
+
+**$27 and $60 confusion**: The Z-Machine spec inherits historic
+confusion from ASCII/Latin-1. In the original ASCII standard, code $27
+(decimal 39) is "apostrophe" and $60 (decimal 96) is "grave accent".
+But ZSpec11 specifically clarifies that for the Z-Machine, $27 should
+render as a right single quote (U+2019) and $60 as a left single quote
+(U+2018). The grave accent interpretation is explicitly discouraged.
+Infocom themselves used $27 almost exclusively as an apostrophe.
+
+**Default table has 69 entries, not 97**: Although ZSCII codes 155–251
+span 97 possible values, the standard default table only defines 69
+entries (155–223). Codes 224–251 are undefined by default and return
+null. A custom Unicode translation table can define fewer or more
+entries as needed.
+
+### Test Coverage (80 tests)
+
+- ASCII range mapping (5 forward, 5 reverse)
+- Special quote characters ($27/$60, 4 tests)
+- Newline and null handling (3 tests)
+- Default extra characters: individual spot checks (20 tests) plus
+  full round-trip of all 69 entries
+- Beyond-default-table returns null
+- Undefined ZSCII codes (9 edge cases)
+- Control code detection (6 true, 4 false)
+- Control code rejection in UnicodeToZscii (6 tests)
+- BMP code point validation (6 tests)
+- Custom Unicode translation table (4 tests: override, reverse lookup,
+  control code replacement, zero-address fallback)
+- Japanese CJK characters in custom table
+- Edge cases: unmapped characters, adjacent ASCII codes, straight
+  apostrophe and grave accent input mapping
+
+---
