@@ -1516,3 +1516,83 @@ screen — which also ensures GUI backends get implicit split for free.
 - WindowManager status line: V3 delegates to screen, V5 does nothing (2)
 
 ---
+
+## Phase 6: Full Instruction Set
+
+### Task 6.1 — Arithmetic, Logical, and Comparison Opcodes
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Implemented `ArithmeticOps`** in Core. Contains all arithmetic, bitwise,
+   shift, comparison, and random opcodes as methods:
+   - **Arithmetic** (`Add`, `Sub`, `Mul`, `Div`, `Mod`): All operate on
+     unsigned 16-bit words interpreted as signed values via `(short)` cast.
+     Overflow wraps naturally. Division/modulo by zero throws
+     `DivideByZeroException` per spec.
+   - **Bitwise** (`And`, `Or`, `Not`): Unsigned 16-bit operations.
+   - **Shifts** (`LogShift`, `ArtShift`): Positive places = left shift,
+     negative = right shift. Logical shift zero-fills on right shift;
+     arithmetic shift sign-extends. Range validation: -15..+15.
+   - **Comparisons** (`JumpEqual`, `JumpLessThan`, `JumpGreaterThan`,
+     `JumpZero`, `Test`): Return bool for the branch condition. `JumpEqual`
+     accepts 2-4 operands and branches if first equals any; 1 operand
+     throws.
+   - **Random**: Instance method (needs mutable RNG state). Positive range
+     returns 1..range. Negative seeds deterministically. Zero re-randomizes.
+
+#### Design Decisions
+
+**Static vs instance methods**: Arithmetic, bitwise, shift, and comparison
+methods are all `static` — they're pure functions with no state. `Random` is
+an instance method because it maintains a `Random` object for seeding and
+re-randomization. The `ArithmeticOps` class is instantiated once per
+interpreter.
+
+**Signed interpretation via `(short)` cast**: Rather than maintaining
+separate signed/unsigned types, all values are stored as `ushort` and cast
+to `short` where the spec requires signed interpretation (arithmetic,
+comparisons). This matches how the Z-Machine works: unsigned storage with
+signed interpretation. The cast handles two's complement naturally.
+
+**Division rounding toward zero**: C#'s integer division already rounds
+toward zero for both positive and negative operands, matching the spec
+requirement (ZSpec11 "@div and @mod"). No special handling needed.
+
+**`@not` as a single method**: V1-4 has `@not` as a 1OP instruction, V5+
+moves it to the VAR table. The operation is identical — the version
+distinction only matters for opcode decoding, not execution. One method
+serves both.
+
+#### Lessons Learned
+
+- **`unchecked` required for negative ushort literals in tests**: C# won't
+  implicitly convert a negative `short` to `ushort` at compile time without
+  `unchecked`. Every test case with a negative Z-Machine value needs
+  `unchecked((ushort)(short)-N)`.
+
+### Test Coverage (63 tests)
+
+- @add: positive, negative, overflow wrap, mixed sign (4)
+- @sub: positive, negative result, underflow wrap (3)
+- @mul: positive, negative×positive, overflow wrap, by zero (4)
+- @div: positive, rounds toward zero (positive and negative), neg÷neg,
+  division by zero throws (5)
+- @mod: positive, negative dividend, negative divisor, no remainder,
+  division by zero throws (5)
+- @and, @or, @not: masks, sets, inverts (3)
+- @log_shift: left, right zero-fill, high bit zero-fill, zero places,
+  max left/right, out-of-range throws (7)
+- @art_shift: left, right sign-extends, right positive zero-fill,
+  high bit sign-extends, out-of-range throws (5)
+- @je: 2 operands equal/not-equal, 3 operands match first/second/none,
+  4 operands match third/none, 1 operand throws (8)
+- @jl: true, false, equal, signed comparison (4)
+- @jg: true, false, signed comparison (3)
+- @jz: zero, non-zero, 0xFFFF (3)
+- @test: all bits set, not all set, exact match, zero flags (4)
+- @random: positive range in bounds, seed returns 0, seed deterministic,
+  zero re-randomizes, range 1 always returns 1 (5)
+
+---
