@@ -196,11 +196,14 @@ public class Memory
     {
         // ZSpec11 "Padding" — checksum covers only bytes within the declared length.
         // Some early V1–V3 files have FileLength == 0 (header field is zero).
-        int end = FileLength > 0 ? Math.Min(FileLength, _bytes.Length) : _bytes.Length;
+        int end = FileLength > 0 ? Math.Min(FileLength, OriginalBytes.Length) : OriginalBytes.Length;
 
+        // @verify checks story file integrity, so the checksum is over the
+        // original unmodified bytes, not the live working copy whose dynamic
+        // memory region is modified during gameplay.
         int sum = 0;
         for (int i = 0x40; i < end; i++)
-            sum += _bytes[i];
+            sum += OriginalBytes[i];
 
         return (ushort)(sum & 0xFFFF);
     }

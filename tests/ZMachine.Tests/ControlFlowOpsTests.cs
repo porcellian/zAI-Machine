@@ -376,6 +376,26 @@ public class ControlFlowOpsTests
         Assert.False(ops.Verify());
     }
 
+    [Fact]
+    public void Verify_StillPassesAfterDynamicMemoryModified()
+    {
+        var memory = new Memory();
+        memory.LoadStory(File.ReadAllBytes(Zork1Path));
+
+        int version = memory.ReadByte(0x00);
+        int globalsAddr = memory.ReadWord(0x0C);
+        var state = new MachineState(memory, globalsAddr);
+        var ops = new ControlFlowOps(memory, state, version);
+
+        // Modify dynamic memory (globals area) — this is within the
+        // $40..fileLength checksum range and would cause a mismatch
+        // if ComputeChecksum used the live _bytes instead of OriginalBytes.
+        memory.WriteByte(globalsAddr, 0xFF);
+        memory.WriteByte(globalsAddr + 1, 0xFF);
+
+        Assert.True(ops.Verify());
+    }
+
     #endregion
 
     #region Restart
