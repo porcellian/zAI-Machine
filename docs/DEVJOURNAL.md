@@ -855,3 +855,86 @@ entries as needed.
   apostrophe and grave accent input mapping
 
 ---
+
+## Task 3.4 — Text Encoding for Dictionary Lookup
+
+**Date**: 2026-09-06
+**Branch**: `feature/3.4-text-encoding`
+**Status**: Complete
+
+### What Was Done
+
+Implemented `TextEncoder` — the reverse of `TextDecoder`. Where
+`TextDecoder` unpacks Z-characters into readable text, `TextEncoder`
+packs text into Z-character form for dictionary lookup (used by
+`@tokenise` and `@read` to match player input against dictionary
+entries).
+
+Key features:
+- **V1-3**: 4-byte output (2 words, 6 Z-characters)
+- **V4+**: 6-byte output (3 words, 9 Z-characters)
+- **Alphabet search order**: A0 first (no shift), then A1 (shift 4 in
+  V3+), then A2 (shift 5 in V3+), then 10-bit ZSCII escape (shift +
+  z-char 6 + high 5 bits + low 5 bits = 4 z-chars)
+- **V1-2 shift-lock**: When consecutive characters share a non-A0
+  alphabet, uses shift-lock (z-chars 4/5) instead of single-shift
+  (z-chars 2/3). Requires tracking locked alphabet state across the
+  encoding loop.
+- **V1-2 truncation rule**: If truncation to 6 z-chars breaks a
+  multi-z-char construction (shift without payload, or partial ZSCII
+  escape), the end-bit of the last word is NOT set.
+- **Padding**: Unused z-char slots filled with z-char 5.
+- **Custom alphabet support**: V5+ custom alphabets via memory address.
+
+### Design Decisions
+
+**Stateful encoding for V1-2 shift-locks**: The initial implementation
+encoded each character independently, which meant after a shift-lock the
+next character would redundantly emit another shift. Refactored to track
+`lockedAlphabet` across the encoding loop — when locked to A1, characters
+in A1 emit directly without a shift prefix, matching how the decoder
+works. This mirrors the `int lockedAlphabet` approach used in
+`TextDecoder`.
+
+**Separate IsTruncatedIncomplete pass**: The V1-2 truncation rule
+requires knowing whether the full (untruncated) encoding would break a
+multi-z-char construction at the truncation point. This is computed by a
+separate pass that encodes without padding and walks the resulting z-char
+list to find construction boundaries. This avoids complicating the main
+encoding loop with truncation awareness.
+
+**V1-2 shift direction**: Z-chars 2/4 shift "up" (A0→A1→A2→A0) and
+3/5 shift "down" (A0→A2→A1→A0). The direction depends on the current
+locked alphabet, not always from A0. Implemented as `(to - from + 3) % 3`
+to compute delta 1 (up) vs delta 2 (down).
+
+### Spec Interpretation Notes
+
+**"Next two characters" for shift-lock**: ZSpec11 says "shift-lock
+Z-characters 4 and 5 are used instead of single-shift 2 and 3 when
+the next two characters come from the same alphabet." This means: when
+encoding character at position i, if character at position i+1 is in
+the same non-A0 alphabet, use shift-lock for character i. The lock
+then covers both i and i+1 (and beyond if more follow).
+
+**Zork I dictionary verification**: Verified encoding against real
+zork1.z3 dictionary entries — "mailbox" (0x453F: 48 CE C4 F4),
+"hello" (0x42DE: 35 51 C6 85), "north" (0x461F: 4E 97 E5 A5). The
+"h2o" entry (34 AA D0 A5) exercises A2 shifts for digits.
+
+### Test Coverage (30 tests)
+
+- Basic V3 encoding: mailbox, hello, north against zork1 dictionary (3)
+- Padding and truncation: short words, long words (4)
+- V3 end bit and byte count (3)
+- V4+ encoding: 6-byte output, 9 z-char capacity, end bit (4)
+- Shift characters: uppercase (A1), digits (A2), comma, h2o, space (5)
+- 10-bit ZSCII escape: '@' character, mixed text (2)
+- V1-2 shift-lock: consecutive A1, consecutive A2, single non-A0,
+  comparison with V3 single-shift (4)
+- V1-2 truncation: incomplete shift end-bit unset, complete end-bit
+  set, V3 always set (3)
+- Real story file: multiple zork1 entries verified (1)
+- Custom alphabet: reversed A0 in V5 (1)
+
+---
