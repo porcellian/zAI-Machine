@@ -1659,3 +1659,59 @@ like filling a region by copying a single byte forward repeatedly.
   negative size force forward, no overlap (5)
 
 ---
+
+### Task 6.3 — Object Manipulation Opcodes
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Implemented `ObjectOps`** in Core. Thin opcode-level wrappers around
+   the existing `ObjectTable` methods, adapting them to opcode calling
+   conventions:
+
+   **Tree opcodes**: `GetParent` (store), `GetChild` (store + branch if
+   non-zero), `GetSibling` (store + branch if non-zero), `JumpIn`
+   (branch if obj1's parent == obj2), `InsertObj`, `RemoveObj`.
+
+   **Property opcodes**: `GetProp` (returns value or default), `GetPropAddr`
+   (returns data address or 0), `GetPropLen` (0→0), `GetNextProp` (0 = first),
+   `PutProp` (sets 1 or 2 byte property).
+
+   **Attribute opcodes**: `TestAttr` (branch), `SetAttr`, `ClearAttr`.
+
+   **Output**: `PrintObj` — decodes the short name Z-string via TextDecoder
+   and returns it as a string for the caller to send to the output stream.
+
+#### Design Decisions
+
+**Thin wrappers, not duplicated logic**: `ObjectOps` delegates entirely to
+`ObjectTable` for the actual tree/property/attribute operations. The value
+it adds is adapting return types to opcode conventions — returning tuples
+for store+branch opcodes (`GetChild` returns `(child, hasChild)`), booleans
+for branch-only opcodes, and strings for `@print_obj`.
+
+**`PrintObj` returns a string**: Rather than taking an `IScreen` or
+`OutputStreamManager`, `PrintObj` returns the decoded name as a string.
+The interpreter's opcode dispatcher is responsible for sending it to the
+active output stream. This keeps `ObjectOps` free of IO dependencies.
+
+#### Pitfall: object number assumptions
+
+Initially assumed zork1 object 80 was "leaflet" — it's actually "South of
+House". Also, the first property on object 180 is a 1-byte property, so
+testing `@put_prop` with a 2-byte value (0x1234) only stored the low byte.
+Fixed by walking properties to find a 2-byte one first.
+
+### Test Coverage (23 tests)
+
+- Tree: get parent, get child (with branch), get child no-children case,
+  get sibling, jin true/false, insert obj moves object, remove obj
+  detaches (8)
+- Properties: get existing prop, get missing returns default, get prop addr
+  existing/missing, get prop len 0→0, get prop len range, get next prop
+  from 0, next prop descending order, put prop round-trip (9)
+- Attributes: test attr, set+test, clear+test (3)
+- @print_obj: "West of House", "small mailbox", "South of House" (3)
+
+---
