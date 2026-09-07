@@ -1147,3 +1147,79 @@ intact, clear attr 0, verify attr 13 still intact.
 - V5 out-of-range: attr 48 warns + returns false (updated from throw)
 
 ---
+
+## Phase 5: I/O and Screen Model
+
+### Task 5.1 — Text Output Backend (Console)
+
+**Date**: 2026-09-07
+**Branch**: `feature/5.1-console-screen` (from `feature/4.3-attribute-system`)
+**Files**: `src/ZMachine.IO/ConsoleScreen.cs` (rewritten), `tests/ZMachine.Tests/ConsoleScreenTests.cs` (rewritten)
+
+#### Design Decisions
+
+**TextWriter injection for testability**: The Phase 1 stub wrote directly
+to `Console.Write()`, making output capture impossible. Refactored the
+constructor to accept `TextWriter`, column/row dimensions, and an
+`isTerminal` flag. Tests pass a `StringWriter` with `isTerminal: false`
+to capture output without ANSI escape codes. The parameterless
+constructor delegates to `Console.Out` for real terminal use.
+
+**Word wrapping in buffer mode**: When `_bufferMode` is true, characters
+accumulate in `_lineBuffer`. On each character, if `_cursorColumn +
+buffer.Count > columns`, `FlushWithWordWrap()` finds the last space that
+fits and breaks there. The space is consumed (not emitted), and the
+remainder stays in the buffer. If no space fits and cursor is at column 0,
+the word is force-broken at the screen width. This matches the spec
+(ZSpec S8.4) and produces clean word-wrapped output at any width.
+
+**Buffer mode off**: Characters pass through directly. A hard line break
+is emitted when the cursor reaches the screen width, matching terminal
+behavior for unbuffered output.
+
+**Status line formatting**: Extracted as `public static FormatStatusLine`
+for direct unit testing. Location is left-aligned, score/time is
+right-aligned, padded with spaces. If the combined text exceeds the
+width, it's truncated. Minimum 1 space of padding between the two parts.
+
+**Upper window cursor tracking**: When window 1 is selected, each
+character is written at `(_upperCursorLine, _upperCursorColumn)`, which
+advances with each character. Characters beyond `_upperWindowLines` are
+silently dropped. In terminal mode, ANSI cursor positioning codes are
+emitted; in test mode, characters are written inline.
+
+**ANSI codes gated by isTerminal**: All escape sequences (`\x1b[...`)
+are suppressed in non-terminal mode. This includes `SetTextStyle`,
+`EraseLine`, `EraseWindow`, `SetCursor`, and the status line
+save/restore cursor sequences. Tests verify output content without
+parsing ANSI noise.
+
+#### Alternatives Considered
+
+**Separate WordWrapper class**: Could have extracted word wrapping into
+a standalone utility, but the wrapping logic is tightly coupled to the
+screen's cursor column state. Keeping it as private methods on
+ConsoleScreen avoids exposing internal state.
+
+**InternalsVisibleTo for FormatStatusLine**: Initially made the method
+`internal static`, but this requires assembly-level attributes. Made it
+`public static` instead — it's a pure function with no side effects,
+safe to expose.
+
+### Test Coverage (28 tests, replacing 4 old smoke tests)
+
+- Word wrapping: short line, exact width, wrap at space, multiple words,
+  force-break long word, 80-column sentence, multiple prints accumulate,
+  successive wraps, trailing space at boundary (13)
+- Buffer mode off: no word wrapping (1)
+- Buffer mode toggle: disable flushes buffer (1)
+- Newline: flushes buffer, consecutive spaces preserved, empty print (3)
+- Status line: left/right alignment, full width, truncation, minimum
+  padding, ShowStatusLine output (5)
+- Window management: split/set upper, unsplit, SetCursor (3)
+- Text style: non-terminal suppresses ANSI (1)
+- PrintChar: single characters, newline flushes (2)
+- Screen size: returns constructor values (1)
+- Erase: EraseWindow -1 unsplits, EraseLine non-terminal (2)
+
+---
