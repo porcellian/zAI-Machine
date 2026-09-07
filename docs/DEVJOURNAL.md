@@ -1783,3 +1783,73 @@ memory.
 - Combined: char+newline, num between chars (2)
 
 ---
+
+## Task 6.5 — Control Flow Opcodes
+
+**Date**: 2026-09-07
+**Branch**: `feature/6.5-control-flow-opcodes`
+**Files**: `src/ZMachine.Core/ControlFlowOps.cs`, `tests/ZMachine.Tests/ControlFlowOpsTests.cs`
+
+### Overview
+
+Implemented all Z-Machine control flow opcodes (ZSpec S5, S15): routine calls
+(`@call_1s`/`@call_2s`/`@call_vs`/`@call_vs2` and `_vn` discard variants),
+returns (`@ret`, `@rtrue`, `@rfalse`, `@ret_popped`), flow control (`@jump`,
+`@nop`, `@piracy`), exception-like `@catch`/`@throw`, `@check_arg_count`,
+`@verify`, `@restart`, and `@quit`.
+
+### Design Decisions
+
+**Single Call method for all call variants**: Rather than separate methods for
+`@call_1s`, `@call_2s`, etc., a single `Call(packedAddress, args, argCount,
+storeVariable, discardResult, returnPC)` handles all variants. The caller
+(instruction dispatcher) selects which operands to pass. This eliminates
+code duplication since the variants differ only in operand count and
+store/discard semantics.
+
+**Packed address 0 returns false, not void**: ZSpec says calling address 0
+does nothing and stores 0. The `Call` method returns `bool` — `false` for
+address 0 — so the dispatcher knows to store 0 without entering a routine.
+
+**V1–4 vs V5+ local initialisation**: V1–4 routines have initial values as
+words after the local count byte, which the code reads and writes to the
+frame's `Locals[]`. V5+ skips this entirely (locals start at 0, which is
+the default for `ushort[]`). PC is set past the header in both cases.
+
+**Catch/Throw use frame count**: Following Quetzal S6.1–S6.2, `@catch`
+returns `CallStack.FrameCount` and `@throw` unwinds by popping frames
+until the count matches, then performs a normal `Return`. This matches
+Quetzal's serialisation model.
+
+**Restart clears stack then reads initial PC from (restored) header**: The
+dynamic memory restore happens first, then the call stack is cleared, then
+the initial PC is read from the freshly-restored header word $06. This
+ensures the initial PC reflects the original story file, not any runtime
+modifications.
+
+**Quit is a no-op method**: The actual halt is the execution loop's
+responsibility. `Quit()` exists as a named entry point so the dispatcher
+can pattern-match on it.
+
+### Lessons Learned
+
+Jump offset arithmetic: `target = addressAfterInstruction + offset - 2`.
+The "- 2" is because ZSpec defines the offset relative to the branch data
+itself (which is 2 bytes before the address-after-instruction in the common
+case). Initially got a test assertion wrong by computing the expected value
+incorrectly.
+
+### Test Coverage (23 tests)
+
+- Call/Return: address 0 returns false, V3 frame with initial values, V5
+  locals init to 0, excess args ignored, return pops frame + stores result,
+  discard result, rtrue, rfalse, ret_popped, nested call unwind (10)
+- Jump: positive offset, negative offset (backwards) (2)
+- Catch/Throw: catch returns frame count, throw unwinds and returns (2)
+- check_arg_count: within range true, beyond range false (2)
+- Piracy: always true (1)
+- Nop: does nothing (1)
+- Verify: zork1 checksum matches, corrupted file fails (2)
+- Restart: restores dynamic memory, clears call stack, sets PC to initial (3)
+
+---
