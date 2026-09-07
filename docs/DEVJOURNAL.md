@@ -1853,3 +1853,66 @@ incorrectly.
 - Restart: restores dynamic memory, clears call stack, sets PC to initial (3)
 
 ---
+
+## Task 6.6 — V5+ Screen and Style Opcodes
+
+**Date**: 2026-09-07
+**Branch**: `feature/6.6-screen-style-opcodes`
+**Files**: `src/ZMachine.Core/ScreenStyleOps.cs`, `tests/ZMachine.Tests/ScreenStyleOpsTests.cs`
+
+### Overview
+
+Implemented V5+ screen and style opcodes (ZSpec S8, ZSpec11): `@set_text_style`
+with cumulative combination, `@set_font` with previous-font return, `@set_colour`
+with all standard and Standard 1.1 grey colours, `@get_cursor`, `@erase_line`,
+`@buffer_mode`, `@check_unicode`, `@save_undo`/`@restore_undo` (single-level),
+and the fixed-pitch header bit check.
+
+### Design Decisions
+
+**Callback-based screen delegation**: `ScreenStyleOps` lives in Core (no IO
+dependency) and delegates rendering via `Action`/`Func` callbacks (`OnSetTextStyle`,
+`OnSetFont`, `OnSetColour`, `OnGetCursor`, `OnEraseLine`, `OnBufferMode`). The
+execution loop wires these to the `IScreen` backend at startup. This avoids
+Core→IO coupling while keeping style state tracked centrally.
+
+**Style 0 clears, non-zero combines**: Per ZSpec11, `@set_text_style 0` clears
+all styles back to Roman. Non-zero values are OR'd into the accumulator. This
+means `set_text_style 2; set_text_style 4` gives Bold+Italic (6), not just
+Italic (4).
+
+**SetFont returns 0 for unavailable fonts**: Font 2 (undefined) and fonts 5+
+(reserved) immediately return 0 without changing state. Font 0 returns the
+current font without changing it (ZSpec query convention).
+
+**SetColour 0 = no change**: Colour 0 means "current", not black. This lets
+games set only foreground or only background in a single call.
+
+**Single-level undo via dynamic memory snapshot**: `SaveUndo` copies dynamic
+memory (0..StaticBase) into a byte array. `RestoreUndo` writes it back and
+clears the snapshot (one-shot). Returns 1 for save, 2 for restore, 0 for
+failure — the different return values let the game distinguish "just saved"
+from "just restored".
+
+**Fixed-pitch header bit**: Rather than intercepting `@storeb`/`@storew` writes
+to the header, `IsFixedPitchRequested()` reads the live bit on demand. The
+execution loop can check this after any memory write to the header region.
+
+### Test Coverage (32 tests)
+
+- @set_text_style: Roman clears, combines via addition, duplicate idempotent,
+  callback invoked (4)
+- @set_font: normal→previous, fixed-pitch switch, char graphics, font 2
+  returns 0, font 5+ returns 0, font 0 queries (6)
+- @set_colour: sets fg/bg, colour 0 means current, default is 1, all standard
+  (2–9), Standard 1.1 greys (10–12) (5)
+- @get_cursor: writes position to memory, defaults (1,1) (2)
+- @erase_line: value 1 invokes, other values ignored (2)
+- @buffer_mode: enable/disable (2)
+- @check_unicode: printable ASCII both bits, space, BMP non-ASCII print only,
+  control codes neither (4)
+- @save_undo/@restore_undo: save returns 1, restore without save returns 0,
+  save+modify+restore round-trip, restore only works once (4)
+- Fixed-pitch: default false, set bit → true, clear bit → false (3)
+
+---
