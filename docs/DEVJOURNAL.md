@@ -1715,3 +1715,71 @@ Fixed by walking properties to find a 2-byte one first.
 - @print_obj: "West of House", "small mailbox", "South of House" (3)
 
 ---
+
+## Task 6.4 — Text Output Opcodes
+
+**Date**: 2026-09-07
+**Branch**: `feature/6.4-text-output-opcodes`
+**Files**: `src/ZMachine.Core/TextOutputOps.cs`, `tests/ZMachine.Tests/TextOutputOpsTests.cs`
+
+### Overview
+
+Implemented all Z-Machine text output opcodes (ZSpec S15): `@print`, `@print_ret`,
+`@print_addr`, `@print_paddr`, `@print_char`, `@print_num`, `@new_line`,
+`@print_table` (V5+), `@print_unicode` (EXT, V5+), and `@encode_text` (V5+).
+All output is routed through `OutputStreamManager` to respect stream selection.
+
+### Design Decisions
+
+**TextOutputOps as a non-static class**: Unlike `VariableMemoryOps` (static), this
+class holds references to `Memory`, `TextDecoder`, `TextEncoder`, and
+`OutputStreamManager`. These dependencies make a static design awkward — the
+instance approach keeps the API clean.
+
+**Print returns byte length, not void**: `@print` and `@print_ret` decode an inline
+Z-string that immediately follows the opcode. The caller (future instruction
+dispatcher) needs the byte length to advance PC past the string. Returning `int`
+from `Print`/`PrintRet` provides this directly.
+
+**PrintPAddr takes an already-unpacked address**: The packed-to-byte address
+conversion depends on version and (for V6/V7) a strings offset. That logic lives
+in `AddressHelper.UnpackStringAddress`. Rather than duplicating it, `PrintPAddr`
+accepts the unpacked address. The instruction dispatcher will call
+`AddressHelper` before `PrintPAddr`.
+
+**PrintTable newline placement**: Newlines are emitted between rows, not after
+the last row. This matches ZSpec S15 which describes printing a "rectangle" —
+the final row has no trailing newline.
+
+**PrintUnicode control code rejection**: Silently drops control codes (0-31,
+127-159) rather than throwing. This is the defensive behavior recommended by
+ZSpec11 for characters that cannot be printed.
+
+**EncodeText caps at 6 bytes**: V5+ dictionary entries are 6 bytes (3 words,
+9 Z-chars). The method writes at most 6 bytes to the destination regardless of
+what `TextEncoder.EncodeForDictionary` returns, matching the spec.
+
+### Lessons Learned
+
+Synthetic test memory requires valid header fields. `Memory.LoadStory` validates
+the static memory base (header $0E) — a zeroed header fails with "Invalid static
+memory base $0000". The fix was setting $0E to $8000 to place the static/dynamic
+boundary high enough that test writes to addresses $1000-$3100 land in dynamic
+memory.
+
+### Test Coverage (29 tests)
+
+- @print: Z-string decoding + byte length return, byte length is word-aligned (2)
+- @print_ret: prints string + newline, returns byte length (1)
+- @print_addr / @print_paddr: byte address and unpacked address (2)
+- @print_char: ASCII char, space (2)
+- @print_num: positive, zero, negative (-42), min signed (-32768), max positive (5)
+- @new_line: prints newline (1)
+- @print_table: single row, multiple rows 2x3, skip bytes, height=1 no newline (4)
+- @print_unicode: BMP char (é), Greek (α), reject low control, reject DEL,
+  reject C1 range, accept space, accept 160 (7)
+- @encode_text: writes nonzero bytes, from-offset equivalence, round-trip
+  matches TextEncoder (3)
+- Combined: char+newline, num between chars (2)
+
+---
