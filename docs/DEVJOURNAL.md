@@ -938,3 +938,94 @@ zork1.z3 dictionary entries — "mailbox" (0x453F: 48 CE C4 F4),
 - Custom alphabet: reversed A0 in V5 (1)
 
 ---
+
+## Phase 4: Object System
+
+### Task 4.1 — Object Table and Tree Traversal
+
+**Date**: 2026-09-06
+**Branch**: `feature/4.1-object-table` (from `feature/3.4-text-encoding`)
+**Files**: `src/ZMachine.Core/ObjectTable.cs`, `tests/ZMachine.Tests/ObjectTableTests.cs`
+
+#### Design Decisions
+
+**Constructor-based layout selection**: The `ObjectTable` constructor accepts
+version and table address, computing all layout parameters (entry size, attribute
+byte count, pointer size, defaults count) at construction time. This avoids
+branching on version in every accessor method.
+
+**Version-conditional pointer size**: V1-3 uses 1-byte parent/sibling/child
+pointers (max 255 objects), V4+ uses 2-byte pointers (max 65535). A single
+`_pointerSize` field drives `ReadByte` vs `ReadWord` in getters, keeping the
+tree traversal code unified across versions.
+
+**Insert/Remove as spec-mandated pair**: `InsertObject` first calls
+`RemoveObject` to detach from any existing parent, then prepends as first
+child — matching the semantics of `@insert_obj` exactly (ZSpec S12). The
+old first child becomes the inserted object's sibling.
+
+**RemoveObject sibling-chain walk**: Removing a non-first child requires
+walking the parent's child chain to find the predecessor. This is O(n) in
+sibling count, but Z-Machine games rarely have more than a dozen children
+per container, so it's fine.
+
+**Attribute bit layout**: Attribute 0 = top bit of first byte, attribute N
+is at `byte[N/8]` bit `7-(N%8)`. This matches the spec's definition and
+the big-endian storage model used throughout the Z-Machine.
+
+#### Real Story File Exploration
+
+Used Python to map the zork1.z3 object tree. Key findings:
+
+- Object table at 0x02B0, property defaults (31 words = 62 bytes),
+  entries start at 0x02EE, each 9 bytes.
+- Object 82 is the root rooms container.
+- Object 180 ("West of House"): parent=82, sibling=15, child=181.
+- Object 181 ("door"): parent=180, sibling=160, child=0.
+- Object 160 ("mailbox"): parent=180, sibling=0, child=161.
+- Object 161 ("leaflet"): parent=160, sibling=0, child=0.
+- Object 4 ("cretin") attrs byte 0 = 0x01, confirming attribute 7 set.
+
+These values became test expectations for the real-story-file tests.
+
+#### Synthetic Test Data Design
+
+Created two synthetic helpers:
+
+- `CreateSyntheticV3()`: V3 layout at address 0x02B0 (matching zork1 for
+  mental mapping), 10 objects with zeroed attributes/pointers and dummy
+  property tables. Used for insert/remove/attribute mutation tests.
+
+- `CreateSyntheticV5()`: V5 layout at 0x0100 with 63 property defaults,
+  14-byte entries, 2-byte pointers. Used to verify V4+ attribute range
+  (0-47), property default count (63), and 2-byte pointer operations.
+
+Both helpers follow the established Memory pattern: parameterless
+constructor + `LoadStory(byte[])`, with valid version byte, minimum 64
+bytes, and correct static base word at 0x0E.
+
+### Test Coverage (33 tests)
+
+- Real story tree traversal: parent/child/sibling chains for objects
+  180, 181, 160, 161 (7)
+- Object 0 null sentinel: throws on access (1)
+- Attributes on real story: mailbox readable, cretin attr 7 set (2)
+- Property defaults: readable 1-31 without crash (1)
+- Property table address: mailbox has non-zero address with name (1)
+- Synthetic insert: into empty parent, pushes existing child, moves
+  between parents (3)
+- Synthetic remove: first child, middle child, last child, only child,
+  no-parent no-op (5)
+- Multiple insertions: chain ordering verified (1)
+- Attribute bit layout: attr 0 = top bit byte 0, attr 7 = bottom bit
+  byte 0, attr 31 = bottom bit byte 3 (3)
+- Attribute range validation: out-of-range throws (1)
+- Attribute isolation: setting one doesn't affect neighbors (1)
+- Set/clear/test round-trip (2)
+- V5 two-byte pointers: large object numbers (1)
+- V5 property defaults: 63 entries, 64 throws (1)
+- V5 attributes: 48-bit range, attr 48 throws (1)
+- Property default value: write/read round-trip (1)
+- Property default range: 0 and 32 throw (1)
+
+---
