@@ -98,32 +98,75 @@ public class ObjectTableTests
     #region Real Story File — Attributes
 
     [Fact]
-    public void Zork1_Mailbox_HasExpectedAttributes()
+    public void Zork1_Mailbox_AttributeBytes()
     {
-        // Object 160 ("mailbox") attrs = check raw bytes.
-        // From exploration: object 160's attrs can be verified by reading them.
+        // Object 160 ("mailbox") attrs = 0x00041000.
+        // Byte 0 = 0x00: no attrs 0-7.
+        // Byte 1 = 0x04 = 0000_0100: attr 13 set.
+        // Byte 2 = 0x10 = 0001_0000: attr 19 set.
+        // Byte 3 = 0x00: no attrs 24-31.
         var (_, table) = LoadZork1();
 
-        // Just verify we can read attributes without error and they are stable.
-        // Attribute 0 is the top bit of the first byte.
-        bool attr0 = table.TestAttribute(160, 0);
-        bool attr31 = table.TestAttribute(160, 31);
-        // These are deterministic — same every time from the file.
-        // We don't need to know the exact values for this test;
-        // the point is the read/write API works.
-        Assert.IsType<bool>(attr0);
-        Assert.IsType<bool>(attr31);
+        Assert.False(table.TestAttribute(160, 0));
+        Assert.True(table.TestAttribute(160, 13));
+        Assert.True(table.TestAttribute(160, 19));
+        Assert.False(table.TestAttribute(160, 31));
     }
 
     [Fact]
-    public void Zork1_Cretin_Attribute0IsSet()
+    public void Zork1_Cretin_AttributeBytes()
     {
-        // Object 4 ("cretin") attrs = 01420002.
-        // Byte 0 = 0x01, so attribute 7 is set (bit 0 of byte 0 = attr 7).
-        // Actually: attr 0 = bit 7 of byte 0. 0x01 = 0000_0001, so attr 7 is set.
+        // Object 4 ("cretin") attrs = 0x01420002.
+        // Byte 0 = 0x01: attr 7.
+        // Byte 1 = 0x42 = 0100_0010: attrs 9, 14.
+        // Byte 2 = 0x00: none.
+        // Byte 3 = 0x02 = 0000_0010: attr 30.
         var (_, table) = LoadZork1();
-        Assert.False(table.TestAttribute(4, 0)); // bit 7 of 0x01 = 0
-        Assert.True(table.TestAttribute(4, 7));  // bit 0 of 0x01 = 1
+
+        Assert.False(table.TestAttribute(4, 0));
+        Assert.True(table.TestAttribute(4, 7));
+        Assert.True(table.TestAttribute(4, 9));
+        Assert.True(table.TestAttribute(4, 14));
+        Assert.False(table.TestAttribute(4, 15));
+        Assert.True(table.TestAttribute(4, 30));
+    }
+
+    [Fact]
+    public void Zork1_WestOfHouse_AttributeBytes()
+    {
+        // Object 180 attrs = 0x02400800.
+        // Byte 0 = 0x02: attr 6.
+        // Byte 1 = 0x40: attr 9.
+        // Byte 2 = 0x08: attr 20.
+        // Byte 3 = 0x00: none.
+        var (_, table) = LoadZork1();
+
+        Assert.True(table.TestAttribute(180, 6));
+        Assert.True(table.TestAttribute(180, 9));
+        Assert.True(table.TestAttribute(180, 20));
+        Assert.False(table.TestAttribute(180, 0));
+        Assert.False(table.TestAttribute(180, 31));
+    }
+
+    [Fact]
+    public void Zork1_SetAndClearAttribute_RoundTrip()
+    {
+        var (_, table) = LoadZork1();
+
+        // Mailbox attr 0 is initially false.
+        Assert.False(table.TestAttribute(160, 0));
+
+        table.SetAttribute(160, 0);
+        Assert.True(table.TestAttribute(160, 0));
+
+        // Existing attr 13 is still set — no corruption.
+        Assert.True(table.TestAttribute(160, 13));
+
+        table.ClearAttribute(160, 0);
+        Assert.False(table.TestAttribute(160, 0));
+
+        // Attr 13 still intact.
+        Assert.True(table.TestAttribute(160, 13));
     }
 
     #endregion
@@ -369,12 +412,42 @@ public class ObjectTableTests
     }
 
     [Fact]
-    public void Attribute_OutOfRange_Throws()
+    public void Attribute_OutOfRange_WarnsAndReturnsFalse()
     {
         var (_, table) = CreateSyntheticV3();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => table.TestAttribute(1, 32));
-        Assert.Throws<ArgumentOutOfRangeException>(() => table.TestAttribute(1, -1));
+        var warnings = new List<string>();
+        table.Warning += w => warnings.Add(w);
+
+        Assert.False(table.TestAttribute(1, 32));
+        Assert.False(table.TestAttribute(1, -1));
+        Assert.Equal(2, warnings.Count);
+    }
+
+    [Fact]
+    public void SetAttribute_OutOfRange_WarnsAndNoOps()
+    {
+        var (_, table) = CreateSyntheticV3();
+
+        var warnings = new List<string>();
+        table.Warning += w => warnings.Add(w);
+
+        table.SetAttribute(1, 32);
+        Assert.Single(warnings);
+        // Verify no memory corruption — attr 0 should still be clear.
+        Assert.False(table.TestAttribute(1, 0));
+    }
+
+    [Fact]
+    public void ClearAttribute_OutOfRange_WarnsAndNoOps()
+    {
+        var (_, table) = CreateSyntheticV3();
+
+        var warnings = new List<string>();
+        table.Warning += w => warnings.Add(w);
+
+        table.ClearAttribute(1, 32);
+        Assert.Single(warnings);
     }
 
     [Fact]
@@ -422,7 +495,11 @@ public class ObjectTableTests
 
         table.SetAttribute(1, 47);
         Assert.True(table.TestAttribute(1, 47));
-        Assert.Throws<ArgumentOutOfRangeException>(() => table.TestAttribute(1, 48));
+
+        var warnings = new List<string>();
+        table.Warning += w => warnings.Add(w);
+        Assert.False(table.TestAttribute(1, 48));
+        Assert.Single(warnings);
     }
 
     #endregion

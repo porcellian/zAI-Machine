@@ -244,8 +244,16 @@ public class ObjectTable
     #region Attributes
 
     /// <summary>
+    /// Raised when an out-of-range attribute number is used. Games with
+    /// bugs may reference invalid attributes; the spec says to warn, not
+    /// crash.
+    /// </summary>
+    public event Action<string>? Warning;
+
+    /// <summary>
     /// Tests whether the given attribute is set on the object.
     /// Attribute numbers are 0-based; V1-3 supports 0-31, V4+ supports 0-47.
+    /// Returns false for out-of-range attributes (with a warning).
     /// </summary>
     /// <remarks>
     /// ZSpec S12.3.1 — Attributes are stored as a bit array in the first
@@ -254,17 +262,22 @@ public class ObjectTable
     /// </remarks>
     public bool TestAttribute(int obj, int attribute)
     {
-        ValidateAttribute(attribute);
+        if (!ValidateAttribute(attribute))
+            return false;
         int addr = ObjectAddress(obj);
         int byteIndex = attribute / 8;
         int bitIndex = 7 - (attribute % 8);
         return (_memory.ReadByte(addr + byteIndex) & (1 << bitIndex)) != 0;
     }
 
-    /// <summary>Sets the given attribute on the object.</summary>
+    /// <summary>
+    /// Sets the given attribute on the object. No-ops for out-of-range
+    /// attributes (with a warning).
+    /// </summary>
     public void SetAttribute(int obj, int attribute)
     {
-        ValidateAttribute(attribute);
+        if (!ValidateAttribute(attribute))
+            return;
         int addr = ObjectAddress(obj);
         int byteIndex = attribute / 8;
         int bitIndex = 7 - (attribute % 8);
@@ -272,10 +285,14 @@ public class ObjectTable
         _memory.WriteByte(addr + byteIndex, (byte)(value | (1 << bitIndex)));
     }
 
-    /// <summary>Clears the given attribute on the object.</summary>
+    /// <summary>
+    /// Clears the given attribute on the object. No-ops for out-of-range
+    /// attributes (with a warning).
+    /// </summary>
     public void ClearAttribute(int obj, int attribute)
     {
-        ValidateAttribute(attribute);
+        if (!ValidateAttribute(attribute))
+            return;
         int addr = ObjectAddress(obj);
         int byteIndex = attribute / 8;
         int bitIndex = 7 - (attribute % 8);
@@ -283,12 +300,25 @@ public class ObjectTable
         _memory.WriteByte(addr + byteIndex, (byte)(value & ~(1 << bitIndex)));
     }
 
-    private void ValidateAttribute(int attribute)
+    /// <summary>
+    /// Returns true if the attribute number is in range. Raises a
+    /// warning and returns false otherwise.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S12.3.1 — Out-of-range attributes should produce a warning,
+    /// not a crash, because some games have bugs that reference invalid
+    /// attribute numbers.
+    /// </remarks>
+    private bool ValidateAttribute(int attribute)
     {
         int maxAttr = _attrBytes * 8 - 1;
         if (attribute < 0 || attribute > maxAttr)
-            throw new ArgumentOutOfRangeException(nameof(attribute),
+        {
+            Warning?.Invoke(
                 $"Attribute {attribute} out of range 0-{maxAttr}.");
+            return false;
+        }
+        return true;
     }
 
     #endregion

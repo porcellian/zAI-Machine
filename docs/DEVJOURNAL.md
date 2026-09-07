@@ -1100,3 +1100,50 @@ Also verified czech.z5 V4+ format: object 5 has property 7 in long form
 - V5 GetNextProperty full chain (1)
 
 ---
+
+### Task 4.3 — Attribute System
+
+**Date**: 2026-09-07
+**Branch**: `feature/4.3-attribute-system` (from `feature/4.2-property-system`)
+**Files**: `src/ZMachine.Core/ObjectTable.cs` (modified), `tests/ZMachine.Tests/ObjectTableTests.cs` (extended)
+
+#### Design Decisions
+
+**Warning instead of crash for out-of-range attributes**: The deliverable
+specifies "out-of-range attributes produce a warning, not a crash."
+Changed `ValidateAttribute` from throwing `ArgumentOutOfRangeException` to
+returning `false` and raising a `Warning` event. `TestAttribute` returns
+false, `SetAttribute`/`ClearAttribute` silently no-op. This matches the
+spec's intent that buggy games should not crash the interpreter.
+
+**Warning event pattern**: Added `event Action<string>? Warning` to
+`ObjectTable`. This is a lightweight notification — no dependency on a
+logging framework, easily subscribed to by tests and the future
+interpreter loop.
+
+**Attribute methods already existed from Task 4.1**: The core bit
+manipulation logic (`TestAttribute`, `SetAttribute`, `ClearAttribute`,
+`ValidateAttribute`) was implemented in Task 4.1 alongside the tree
+operations. Task 4.3 focused on the behavioral change (warning vs crash)
+and adding comprehensive real-data tests against zork1.z3.
+
+#### Real Story File Verification
+
+Verified raw attribute bytes for three zork1 objects:
+- Object 4 ("cretin"): 0x01420002 → attrs 7, 9, 14, 30
+- Object 160 ("mailbox"): 0x00041000 → attrs 13, 19
+- Object 180 ("West of House"): 0x02400800 → attrs 6, 9, 20
+
+Set/clear round-trip test on mailbox: set attr 0, verify attr 13 still
+intact, clear attr 0, verify attr 13 still intact.
+
+### Test Coverage (4 new tests, 66 total ObjectTable tests)
+
+- Zork1 attribute bytes: mailbox (attrs 13, 19), cretin (attrs 7, 9,
+  14, 30), West of House (attrs 6, 9, 20) — exact values verified (3)
+- Zork1 set/clear round-trip with isolation check (1)
+- Out-of-range: TestAttribute warns + returns false, SetAttribute warns
+  + no-ops, ClearAttribute warns + no-ops (3, replacing 1 old throw test)
+- V5 out-of-range: attr 48 warns + returns false (updated from throw)
+
+---
