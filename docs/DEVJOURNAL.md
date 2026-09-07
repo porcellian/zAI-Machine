@@ -1275,3 +1275,72 @@ same table.
 - PrintChar: dispatches to screen, captured by stream 3 (2)
 
 ---
+
+### Task 5.3 — Dictionary and Lexical Analysis
+
+**Date**: 2026-09-07
+**Branch**: `feature/5.3-dictionary-tokenizer` (from `feature/5.2-output-streams`)
+**Files**: `src/ZMachine.Core/Dictionary.cs` (new), `src/ZMachine.Core/Tokenizer.cs` (new), `tests/ZMachine.Tests/DictionaryTests.cs` (new)
+
+#### Design Decisions
+
+**Dictionary placed in Core**: The dictionary is a data structure read
+from story memory — no IO dependency. The `Dictionary` class takes a
+`Memory`, version, and `TextEncoder` at construction time. `Parse()` reads
+the header (separators, entry length, entry count, entries start). `Lookup()`
+encodes the word and searches.
+
+**Binary search for sorted dictionaries**: ZSpec S13 says the entry count
+is signed — positive = sorted, negative = unsorted. Most game dictionaries
+are sorted. `Lookup` uses binary search for sorted (O(log n), efficient
+for zork1's 697 entries) and linear scan for unsorted.
+
+**CompareEntry byte-by-byte**: Dictionary entries are compared as raw byte
+sequences (4 bytes V1-3, 6 bytes V4+). This avoids reconstructing words
+from the dictionary — we just compare the encoded form from TextEncoder
+against the entry's encoded bytes.
+
+**Tokenizer as a separate class**: The tokenizer splits input, encodes
+tokens, looks them up, and writes parse buffer entries. It depends on
+`Dictionary` and `TextEncoder` but not on `Memory` for its core splitting
+logic — `SplitIntoTokens` is a static method for testability.
+
+**Token splitting**: Spaces delimit words but are not tokens. Dictionary
+separators (e.g. comma, period, quote) are tokens in their own right and
+are looked up in the dictionary. Adjacent separators each become separate
+tokens. This matches the spec (ZSpec S13.1).
+
+**Parse buffer layout**: Byte 0 = max words (game-set), byte 1 = word
+count (set by tokenizer), then 4 bytes per word: dict address (word),
+text length (byte), text position (byte). The `textBufferOffset` parameter
+handles V1-4 (offset 1) vs V5+ (offset 2) positioning.
+
+**skipUnrecognized flag**: When true (ZSpec11 "@tokenise" 4th operand),
+unknown words are not written to the parse buffer. This allows games to
+re-tokenize with a custom dictionary while preserving already-recognized
+entries.
+
+#### Pitfall: "xyzzy" in zork1
+
+Initially used "xyzzy" as an "unknown word" test case — it turns out
+zork1.z3 actually has "xyzzy" in its dictionary (entry 687 at 0x4DF1).
+Changed to "qqqqq" which genuinely has no dictionary entry.
+
+### Test Coverage (25 tests)
+
+- Dictionary parsing: separators, entry length, count, entries start (4)
+- Dictionary lookup: open, mailbox, north, take, look, west — all
+  verified against known addresses (6)
+- Lookup not found: "qqqqq" returns 0 (1)
+- Lookup truncation: "mailbox" = "mailbo" (V3 6-char limit) (1)
+- Token splitting: simple words, separator, leading/multiple spaces,
+  separator only, empty input, adjacent separators (7)
+- Tokenize "open mailbox": parse buffer with dict addresses, lengths,
+  positions verified (1)
+- Tokenize unknown word: dict address = 0 (1)
+- Tokenize with separator: look,north splits to 3 tokens (1)
+- Tokenize max words: truncation at limit (1)
+- Skip unrecognized: unknown word omitted from parse buffer (1)
+- Unsorted dictionary: linear search finds entry (1)
+
+---
