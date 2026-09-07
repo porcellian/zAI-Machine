@@ -397,7 +397,7 @@ public class ControlFlowOpsTests
     }
 
     [Fact]
-    public void Restart_ClearsCallStack()
+    public void Restart_ResetsCallStackToBaseFrame()
     {
         var (ops, state, memory) = CreateV5Ops();
         PushInitialFrame(state);
@@ -408,7 +408,25 @@ public class ControlFlowOpsTests
 
         ops.Restart();
 
-        Assert.Equal(0, state.CallStack.FrameCount);
+        // Must have exactly one base frame so post-restart instructions
+        // can use the eval stack and local variables.
+        Assert.Equal(1, state.CallStack.FrameCount);
+    }
+
+    [Fact]
+    public void Restart_PostRestartExecutionWorks()
+    {
+        var (ops, state, memory) = CreateV5Ops();
+        PushInitialFrame(state);
+
+        memory.WriteByte(0x200, 0);
+        ops.Call(0x80, [], 0, 0, true, 0x100);
+
+        ops.Restart();
+
+        // Verify eval stack operations work on the new base frame.
+        state.WriteVariable(0, 42); // push
+        Assert.Equal((ushort)42, state.ReadVariable(0)); // pop
     }
 
     [Fact]

@@ -211,6 +211,11 @@ public class ControlFlowOps
             initialPC = _memory.ReadWord(0x06);
         }
 
+        // V1–5: execution begins at a raw PC, not via a routine call,
+        // so push a base frame — MachineState requires one for eval-stack
+        // and local-variable access.
+        _state.CallStack.PushFrame(new CallFrame(0, 0, false, 0, 0));
+
         _state.PC = initialPC;
         return initialPC;
     }
