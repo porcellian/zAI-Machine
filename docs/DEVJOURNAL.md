@@ -1223,3 +1223,55 @@ safe to expose.
 - Erase: EraseWindow -1 unsplits, EraseLine non-terminal (2)
 
 ---
+
+### Task 5.2 — Output Stream Management
+
+**Date**: 2026-09-07
+**Branch**: `feature/5.2-output-streams` (from `feature/5.1-console-screen`)
+**Files**: `src/ZMachine.Core/OutputStreamManager.cs` (new), `tests/ZMachine.Tests/OutputStreamManagerTests.cs` (new)
+
+#### Design Decisions
+
+**Placed in Core, not IO**: `OutputStreamManager` depends on `Memory`
+(for stream 3 table writes) and is used by the interpreter loop, so it
+belongs in Core. The screen callback is an `Action<string>` delegate
+rather than a direct `IScreen` dependency — the interpreter wires the
+two together, keeping Core independent of IO.
+
+**Delegate-based stream dispatch**: `ScreenPrint`, `TranscriptPrint`,
+and `CommandPrint` are `Action<string>?` properties. This avoids
+requiring stream 2/4 file writers to be provided at construction time;
+they can be attached later when the game enables transcripting or
+command recording.
+
+**Stream 3 suppression**: Per ZSpec S7.2, when stream 3 is active ALL
+other streams are suppressed. The `Print` method checks `_stream3Depth`
+first and short-circuits to `WriteToStream3`. This is a hard behavioral
+requirement — some games rely on stream 3 to capture text without
+side effects on screen.
+
+**Stream 3 nesting**: The spec allows up to 16 nesting levels. Each
+`SelectStream(3, addr)` pushes a table address onto a fixed-size stack
+and initializes the count word to 0. `SelectStream(-3)` pops one level.
+Exceeding 16 levels throws — this is a game bug. Deselecting when not
+active is a no-op (defensive).
+
+**Stream 3 table format**: Word at offset 0 = character count (updated
+incrementally), ZSCII bytes starting at offset 2. Each character is
+written as a single byte. Multiple `Print` calls accumulate into the
+same table.
+
+### Test Coverage (22 tests)
+
+- Stream 1: active by default, disable suppresses, re-enable works (3)
+- Stream 2: inactive by default, enable receives text, both screen +
+  transcript, disable stops, IsTranscriptActive property (5)
+- Stream 4: inactive by default, enable receives text (2)
+- Stream 3 capture: writes chars to memory table, count word correct,
+  suppresses all other streams, resumes after deselect, initializes
+  count to zero, multiple prints accumulate, IsStream3Active (7)
+- Stream 3 nesting: two levels with separate tables, inner doesn't
+  affect outer, max depth throws, deselect when inactive no-ops (4)
+- PrintChar: dispatches to screen, captured by stream 3 (2)
+
+---
