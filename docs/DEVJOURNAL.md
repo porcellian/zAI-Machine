@@ -710,3 +710,53 @@ z-characters form a 10-bit ZSCII code (hi×32 + lo). This can represent
 any ZSCII code 0–1023, though in practice only printable codes are used.
 
 ---
+
+### Task 3.2 — Abbreviation Table Expansion
+
+**Date**: 2026-09-06
+
+#### Steps Taken
+
+1. **Verified existing implementation** — the abbreviation expansion
+   mechanism was already implemented in `TextDecoder` as part of Task
+   3.1: entry indexing `(z-1)×32+x`, word address lookup, byte address
+   conversion, recursive decode with recursion guard, and version-
+   dependent trigger detection (V1: none, V2: z-char 1, V3+: 1,2,3).
+
+2. **Added 6 real story file tests** verifying end-to-end abbreviation
+   expansion against zork1.z3 object names:
+   - "pair of hands" (abbreviation for "of ")
+   - "The Troll Room" (two abbreviations: "The " and "Room")
+   - "large bag" (abbreviation for "large ")
+   - "On the Rainbow" (abbreviation for "the ")
+   - "South of House" (abbreviation for "of ")
+   - Multi-abbreviation verification test
+
+3. **Decoded all 96 abbreviation entries** from zork1.z3 to verify the
+   table structure and confirm common words ("the", "you", "is", "of",
+   "Room", etc.) match expected Infocom vocabulary.
+
+#### Design Decisions
+
+**No new code needed — test-only task**
+
+All abbreviation machinery was built in Task 3.1 because the text
+decoder naturally handles abbreviation triggers as part of the Z-char
+decode loop. Separating abbreviation handling into a separate class
+would have added indirection without benefit — the abbreviation table
+is just a lookup step within the same decode algorithm. Task 3.2
+therefore focuses entirely on real-world test coverage.
+
+#### Spec Interpretation Notes
+
+**96 entries in V3+**: The abbreviation table has 96 entries (3 trigger
+characters × 32 possible next-z-chars). Each entry is a word address
+(not a byte address), so the byte address is entry × 2. Infocom games
+use these entries for common words and phrases to compress text — in
+zork1.z3, entries include "the ", "you ", "is ", "of ", "Room", and
+game-specific words like "Cyclops " and "thief ".
+
+**V2 has only 32 entries**: Only z-char 1 triggers abbreviation in V2,
+so only entries 0–31 are used. V1 has no abbreviation support at all.
+
+---

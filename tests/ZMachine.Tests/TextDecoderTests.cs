@@ -503,6 +503,73 @@ public class TextDecoderTests
         Assert.Equal("brave adventurer", text);
     }
 
+    [Fact]
+    public void Zork1_Object1_PairOfHands()
+    {
+        // "pair of hands" — uses abbreviation for "of " (entry 10)
+        var (_, decoder) = LoadZork1();
+        var (text, byteLen) = decoder.DecodeZString(0x0BB9);
+
+        Assert.Equal("pair of hands", text);
+        Assert.Equal(8, byteLen);
+    }
+
+    [Fact]
+    public void Zork1_Object102_TheTrollRoom()
+    {
+        // "The Troll Room" — uses abbreviation for "The " (entry 1)
+        // and abbreviation for "Room" (entry 67, z=3,x=3)
+        var (_, decoder) = LoadZork1();
+        var (text, byteLen) = decoder.DecodeZString(0x14D7);
+
+        Assert.Equal("The Troll Room", text);
+        Assert.Equal(8, byteLen);
+    }
+
+    [Fact]
+    public void Zork1_Object115_LargeBag()
+    {
+        // "large bag" — uses abbreviation for "large " (entry 20)
+        var (_, decoder) = LoadZork1();
+        var (text, byteLen) = decoder.DecodeZString(0x161C);
+
+        Assert.Equal("large bag", text);
+        Assert.Equal(4, byteLen);
+    }
+
+    [Fact]
+    public void Zork1_Object28_OnTheRainbow()
+    {
+        // "On the Rainbow" — uses abbreviation for "the " (entry 0)
+        var (_, decoder) = LoadZork1();
+        var (text, _) = decoder.DecodeZString(0x0DB1);
+
+        Assert.Equal("On the Rainbow", text);
+    }
+
+    [Fact]
+    public void Zork1_Object80_SouthOfHouse()
+    {
+        // "South of House" — uses abbreviation for "of " (entry 10)
+        var (_, decoder) = LoadZork1();
+        var (text, _) = decoder.DecodeZString(0x1273);
+
+        Assert.Equal("South of House", text);
+    }
+
+    [Fact]
+    public void Zork1_MultipleAbbreviationsInOneString()
+    {
+        // "The Troll Room" uses two abbreviations: "The " and "Room"
+        // This verifies that multiple abbreviation expansions in a
+        // single Z-string decode correctly.
+        var (_, decoder) = LoadZork1();
+        var (text, _) = decoder.DecodeZString(0x14D7);
+
+        Assert.Contains("The ", text);
+        Assert.Contains("Room", text);
+    }
+
     #endregion
 
     #region Edge Cases
