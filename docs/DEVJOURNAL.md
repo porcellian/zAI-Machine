@@ -1441,3 +1441,78 @@ mapping function with no side effects, making it `public` is appropriate.
   printable ASCII passthrough, escape→27 (5)
 
 ---
+
+### Task 5.5 — Status Line and Window Management (V1–V5)
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Implemented `StatusLineHandler`** in Core. Reads the Z-Machine state
+   needed to construct a V1-3 status line: global variable 0 → object
+   number → short name via `ObjectTable.GetShortNameAddress` + `TextDecoder.
+   DecodeZString`; globals 1/2 → score/turns or hours:minutes; header
+   Flags 1 bit 1 → time vs score mode. `BuildStatusLine()` returns a
+   `(Location, ScoreOrTime)` tuple for the caller to render.
+
+2. **Implemented `WindowManager`** in IO. Coordinates between `IScreen`
+   and Core types for window management:
+   - `SplitWindow(lines)` — tracks upper window size, delegates to IScreen
+   - `SetWindow(window)` — tracks current window, delegates to IScreen
+   - `SetCursor(line, column)` — implements implicit split expansion per
+     ZSpec11 "@set_cursor": if the cursor targets a line below the current
+     split in the upper window, the split expands to include that line
+   - `EraseWindow(window)` — delegates to IScreen, handles unsplit on -1
+   - `ShowStatusLine(StatusLineHandler)` — V3 only; no-ops for V4+
+
+3. **Verified against zork1.z3**: the status line correctly reads object
+   180's short name as "West of House" using the full TextDecoder pipeline
+   including abbreviation expansion.
+
+#### Design Decisions
+
+**WindowManager in IO, not Core**: `WindowManager` depends on both `IScreen`
+(IO) and `StatusLineHandler` (Core). Since IO already references Core, this
+avoids a circular dependency. The alternative — moving `IScreen` to Core —
+would work architecturally (it's a pure interface), but is a larger refactor
+that can be done later if needed.
+
+**StatusLineHandler in Core**: It only depends on `Memory`, `ObjectTable`,
+and `TextDecoder` — all Core types. It doesn't touch `IScreen` directly;
+it builds the data, and `WindowManager` (or the interpreter) renders it.
+
+**Implicit split in WindowManager, not ConsoleScreen**: The implicit split
+is a Z-Machine semantic (ZSpec11 "@set_cursor") rather than a screen
+rendering concern. Putting it in `WindowManager` keeps `ConsoleScreen`
+as a pure rendering backend and makes the behavior testable with a mock
+screen — which also ensures GUI backends get implicit split for free.
+
+#### Lessons Learned
+
+- **Status line needs the full text decoding pipeline**: Object short names
+  are Z-encoded strings that may reference abbreviations. A minimal decoder
+  won't suffice — the `TextDecoder` with its abbreviation table address is
+  required. This was straightforward since TextDecoder was already built in
+  Phase 3, but the dependency chain (Memory → ObjectTable → TextDecoder →
+  abbreviation table from header) means the status line handler needs all
+  of these wired up before it can produce output.
+
+- **Flags 1 bit 1 is game-set, not interpreter-set**: The time/score
+  distinction comes from the story file, not the interpreter. The handler
+  reads it once at construction and caches it.
+
+### Test Coverage (19 tests)
+
+- StatusLineHandler score game: format score/turns, negative score,
+  isTimeGame flag (3)
+- StatusLineHandler time game: format hours:minutes, isTimeGame flag (2)
+- StatusLineHandler location: zork1 "West of House" from object 180,
+  full BuildStatusLine, object 0 returns empty (3)
+- WindowManager split: tracks lines, unsplit resets to 0 (2)
+- WindowManager set window: tracks current window (1)
+- WindowManager set cursor: within split no expansion, below split
+  expands implicitly, lower window no expansion (3)
+- WindowManager erase: -1 unsplits, -2 keeps split, 0 clears lower (3)
+- WindowManager status line: V3 delegates to screen, V5 does nothing (2)
+
+---
