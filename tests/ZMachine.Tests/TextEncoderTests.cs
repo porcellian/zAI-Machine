@@ -534,6 +534,34 @@ public class TextEncoderTests
         Assert.Equal(6, zchars[3]);
     }
 
+    [Fact]
+    public void V2_ShiftToA1_ZChar6IsLetterA_NotEscapeIntroducer()
+    {
+        // "abcdAxyz" — a,b,c,d in A0, then shift-up to A1, 'A' = A1
+        // index 0 = z-char 6. Truncated to 6 z-chars the construction is
+        // complete (shift + 1 char), so the end-bit must be set.
+        var encoder = new TextEncoder(2);
+        byte[] encoded = encoder.EncodeForDictionary("abcdAxyz");
+
+        // Untruncated z-chars: [6,7,8,9, 2,6, 29,30,31]
+        //   a=6, b=7, c=8, d=9 (A0 direct)
+        //   2 = single-shift-up (A0→A1)
+        //   6 = 'A' (A1 index 0)
+        //   x=29, y=30, z=31 (A0)
+        // Truncated to 6: [6,7,8,9, 2,6] — complete.
+        // Packed word 1: (6<<10)|(7<<5)|8 = 0x18E8
+        // Packed word 0: (9<<10)|(2<<5)|6 = 0x2446
+        // End-bit on word 1: 0x18E8 | 0x8000 = not word 0...
+        // Actually: word0 = zchars[0..2], word1 = zchars[3..5]
+        // word0: (6<<10)|(7<<5)|8 = 0x18E8
+        // word1: (9<<10)|(2<<5)|6 = 0x2446 + end-bit = 0xA446
+
+        // The end-bit must be set (bit 15 of the last word).
+        int lastWord = (encoded[2] << 8) | encoded[3];
+        Assert.True((lastWord & 0x8000) != 0,
+            "End-bit should be set — truncation did not break a multi-z-char construction");
+    }
+
     #endregion
 
     #region Helpers
