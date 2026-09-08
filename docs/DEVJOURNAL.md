@@ -2785,3 +2785,70 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - Extension detection: .zblorb, .blorb, .zlb, .blb, .z3 raw (5)
 - Metadata: RelN, Fspc, IFmd XML, AUTH/(c)/ANNO, RDes, absent defaults (6)
 - Interpreter Blorb property: null for raw story (1)
+
+### Task 10.3 — Blorb Resource Discovery and Header Flag Integration
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Added `PictureCount` and `SoundCount` properties to `BlorbReader`** — populated
+   at the end of `ParseRIdx()` using LINQ counts filtered by `BlorbUsage.Picture`
+   and `BlorbUsage.Sound`. These give the interpreter a way to query resource
+   availability without iterating the resource dictionary directly.
+
+2. **Implemented `UpdateHeaderFlags()` in the `Interpreter`** — a private method
+   called at the end of `Init()` that:
+   - **Flags 1 (byte $01)**: Sets bit 1 (0x02, picture display) if Blorb has
+     Pict resources, clears otherwise. Sets bit 5 (0x20, sound effects) if Blorb
+     has Snd resources, clears otherwise.
+   - **Flags 2 high byte ($10)**: For V5+, clears bit 0 (pictures requested) if
+     no pictures available, clears bit 4 (sound requested) if no sounds available.
+     Preserves the bits when resources are available.
+   - **Version guard**: Skips entirely for V1–V3, since these versions don't use
+     the picture/sound capability flags.
+   - **Warnings**: When the game sets request bits but no Blorb is loaded,
+     generates a warning (stored in `BlorbWarnings`). Per ZSpec11, the interpreter
+     should prompt for a Blorb file at startup in this situation.
+
+3. **Added `_blorbWarnings` field and `BlorbWarnings` property** — a simple
+   `List<string>` / `IReadOnlyList<string>` pair on the Interpreter, surfacing
+   any header flag warnings to callers without requiring a callback mechanism.
+
+#### Design Decisions
+
+- **Separate from Blorb.Warnings**: BlorbReader has its own parse warnings
+  (duplicate entries, malformed chunks). Header flag warnings are interpreter-level
+  concerns, so they live on the Interpreter as `BlorbWarnings`.
+
+- **Clear rather than error on missing resources**: ZSpec11 says to "clear if no
+  resources loaded" — the game can still run in text mode. An error would be too
+  aggressive; a warning lets the host UI decide how to inform the user.
+
+- **V4+ threshold for Flags 1, V5+ for Flags 2**: Flags 1 picture/sound bits
+  exist from V4, but Flags 2 (the game request word at $10) is only meaningful
+  from V5. V3 stories don't have these capabilities, so `UpdateHeaderFlags()`
+  returns immediately for V1–V3.
+
+- **Bit manipulation approach**: Used explicit set/clear masks
+  (`flags |= mask` / `flags &= ~mask`) rather than conditional assignment.
+  This preserves unrelated bits in the same flag byte.
+
+#### Spec References
+
+- ZSpec11 "Header capabilities bits" (lines 135–153): Flags 2/3 should reflect
+  current availability; interpreters should prompt for Blorb on startup if game
+  requests graphics/sound.
+- ZSpec S11 — Header byte $01 (Flags 1): bit 1 = picture display, bit 5 = sound.
+- ZSpec S11 — Header word $10 (Flags 2): bit 0 = pictures, bit 4 = sound.
+- Blorb "Contents of the Resource Index Chunk" — resource usage types.
+
+**Test Coverage (19 tests):**
+- PictureCount/SoundCount: pictures only, sounds only, both, zero (4)
+- Flags 1 capability bits: pictures set, sounds set, no Blorb cleared,
+  no pictures cleared, both set (5)
+- Flags 2 request bits: pictures cleared, sound cleared, pictures preserved,
+  sound preserved (4)
+- Blorb warnings: pictures no Blorb, sound no Blorb, both no Blorb,
+  Blorb present no warnings, no requests no warnings (5)
+- Version guard: V3 story flags not modified (1)
