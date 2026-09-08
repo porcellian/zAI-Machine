@@ -1,11 +1,19 @@
-using ZMachine.IO;
+using Avalonia;
 
-// zAI-Machine — Z-Machine interpreter
-// Phase 1 placeholder: verify the solution builds and all projects link correctly.
+namespace ZMachine.App;
 
-var screen = new ConsoleScreen();
-var (cols, rows) = screen.GetScreenSize();
+/// <summary>
+/// Application entry point. Builds the Avalonia application host
+/// and launches the main window.
+/// </summary>
+public static class Program
+{
+    [STAThread]
+    public static void Main(string[] args) => BuildAvaloniaApp()
+        .StartWithClassicDesktopLifetime(args);
 
-Console.WriteLine("zAI-Machine ready");
-Console.WriteLine($"  Z-Machine Standard 1.1 | Quetzal 1.4 | Blorb 2.0.4");
-Console.WriteLine($"  Screen: {cols}x{rows}");
+    public static AppBuilder BuildAvaloniaApp()
+        => AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+            .LogToTrace();
+}

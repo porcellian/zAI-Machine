@@ -2852,3 +2852,106 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - Blorb warnings: pictures no Blorb, sound no Blorb, both no Blorb,
   Blorb present no warnings, no requests no warnings (5)
 - Version guard: V3 story flags not modified (1)
+
+---
+
+## Phase 11: GUI Framework and Vintage Themes
+
+### Task 11.1 — Avalonia UI Project Setup and Rendering Abstraction
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Updated `ZMachine.App` to an Avalonia application** — changed `OutputType` to
+   `WinExe`, added NuGet packages: `Avalonia` 12.1.2, `Avalonia.Desktop` 12.1.2,
+   `Avalonia.Skia` 12.1.2, `Avalonia.Themes.Fluent` 12.1.2, `SkiaSharp` 4.151.2.
+   Also added `AllowUnsafeBlocks` for the bitmap pixel copy in the canvas control.
+
+2. **Added `SkiaSharp` to `ZMachine.IO`** — the rendering layer needs direct
+   access to SkiaSharp types (SKBitmap, SKCanvas, SKColor, SKPaint).
+
+3. **Created `ThemeConfig`** (IO project) — configuration class for vintage display
+   themes: character dimensions (8×16 default), grid size (80×25), border width,
+   Z-Machine color palette (colors 2–15 → RGB), default fg/bg, scanline and CRT
+   curvature toggles, chrome mode (Borderless/Standard), and bitmap font data slot.
+
+4. **Created `IRenderer` interface** (IO project) — pixel-level rendering abstraction:
+   Initialize, DrawCharacter, DrawRegion, DrawImage, SetCursorPosition, Refresh,
+   GetScreenSize, BackBuffer property.
+
+5. **Created `SkiaRenderer`** (IO project) — IRenderer implementation drawing to
+   an off-screen SKBitmap back buffer. Character rendering uses a 1-bit-per-pixel
+   bitmap font with bold (shift right), italic (shift top half), and reverse video
+   (swap fg/bg) support. Fires `OnRefresh` event for UI invalidation.
+
+6. **Created `BuiltInFont`** (IO project) — 8×16 monospace bitmap font covering
+   ASCII 32–126 (95 glyphs, 1520 bytes). VGA-style glyphs generated procedurally.
+   Serves as the default fallback before theme-specific fonts are loaded (Task 11.2).
+
+7. **Created `GuiScreen`** (IO project) — IScreen implementation backed by a
+   character grid ([row,col] for char, fg, bg, style). Maps Z-Machine screen ops
+   to IRenderer calls. Implements word wrapping, scrolling, upper/lower window
+   split, status line, cursor positioning, and text styling.
+
+8. **Created `GuiInputStream`** (IO project) — IInputStream implementation using
+   a thread-safe blocking queue. GUI key events enqueue characters/lines; the
+   Z-Machine background thread blocks on Dequeue. Supports timed input via
+   TryDequeue with timeout.
+
+9. **Created Avalonia application structure** (App project):
+   - `App.axaml` / `App.axaml.cs` — Avalonia Application with FluentTheme (dark)
+   - `MainWindow.axaml` / `MainWindow.axaml.cs` — main window with native menu bar
+     (File: Open Story, Open Blorb, Quit; Tools: placeholder items; Options:
+     placeholder items; Help: About), `SkiaCanvasControl` filling the client area,
+     keyboard input handling (KeyDown for special keys, TextInput for printable chars)
+   - `SkiaCanvasControl.cs` — custom Avalonia control that copies the SkiaRenderer
+     back buffer to a WriteableBitmap on each Refresh for display. Scales to fill
+     the control while maintaining aspect ratio.
+   - `Program.cs` — entry point with `AppBuilder.Configure<App>()`
+
+10. **Line-input mode** in MainWindow — accumulates typed characters in a buffer,
+    submits on Enter. Echoes input to the GuiScreen for visual feedback.
+
+#### Design Decisions
+
+- **Avalonia 12.1.2**: Latest stable release with .NET 10 support. Avalonia 12
+  removed `WithInterFont()` from AppBuilder (Avalonia 11 API); removed the call.
+
+- **SkiaSharp in IO, not just App**: The rendering abstraction (IRenderer,
+  SkiaRenderer, ThemeConfig) belongs in the IO layer alongside IScreen and
+  ConsoleScreen. The App project adds the Avalonia host wrapper.
+
+- **WriteableBitmap pixel copy**: The SkiaRenderer draws to an SKBitmap back
+  buffer. The Avalonia SkiaCanvasControl copies pixels to a WriteableBitmap via
+  unsafe pointer copy on each frame. This avoids Avalonia's SkiaSharp interop
+  layer (which expects the GPU pipeline) and gives us pixel-precise control.
+
+- **Blocking queue for input**: The Z-Machine runs on a background thread. GUI
+  events post to a thread-safe queue; the interpreter blocks on ReadLine/ReadChar.
+  This cleanly separates the execution thread from the UI thread without callbacks.
+
+- **Native menu bar**: Used Avalonia's `NativeMenu` for platform-appropriate menus
+  (macOS menu bar, Windows/Linux title bar). Tools and Options items are disabled
+  placeholders for future tasks.
+
+- **ConsoleScreen preserved**: The console backend remains as the headless/test
+  fallback per the task requirements. GuiScreen is an independent implementation.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: text output, windows, cursor positioning, styling.
+- ZSpec S8.2 — Status line format (reverse video, location + score).
+- ZSpec S8.3.1 — True colour table (Z-Machine colors 2–15).
+- ZSpec S8.7 — @split_window, @set_window, @erase_window, @set_cursor.
+- ZSpec S10 — Input streams, keyboard input, timed input.
+- ZSpec S10.5 — ZSCII cursor/function key mappings (129–154).
+
+**Test Coverage (27 tests):**
+- ThemeConfig: defaults, pixel dimensions, color mapping, out-of-range, palette size (5)
+- BuiltInFont: data size, space glyph, letter A pixels, ASCII coverage (4)
+- SkiaRenderer: back buffer creation, screen size, draw character, draw region,
+  refresh event, reverse style (6)
+- GuiScreen: screen size, print draws, split/set window, erase window -1,
+  set text style, status line, buffer mode flush (7)
+- GuiInputStream: line input, char input, line timeout, char timeout, truncation (5)
