@@ -47,6 +47,12 @@ public class CallStack
     }
 
     /// <summary>
+    /// Removes all frames from the call stack.
+    /// Used by Quetzal restore to replace the entire stack.
+    /// </summary>
+    public void Clear() => _frames.Clear();
+
+    /// <summary>
     /// Returns all frames as an enumerable for serialization (Quetzal save).
     /// Bottom frame is enumerated first.
     /// </summary>
