@@ -45,13 +45,43 @@ public class Interpreter
     public bool Running => _running;
 
     /// <summary>
-    /// Loads a story file, parses the header, and initialises all subsystems.
+    /// The loaded Blorb resource file, or null if no Blorb was loaded.
+    /// Available after calling any Load overload that accepts a Blorb.
     /// </summary>
-    public void Load(string storyPath, IInputStream inputStream, IScreen screen)
+    public BlorbReader? Blorb { get; private set; }
+
+    /// <summary>
+    /// Blorb file extensions recognized for auto-detection.
+    /// Blorb "File Suffixes" — .blorb, .zblorb, .blb, .zlb.
+    /// </summary>
+    private static readonly HashSet<string> BlorbExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        _memory.LoadStory(storyPath);
-        _inputStream = inputStream;
-        Init(screen);
+        ".blorb", ".zblorb", ".blb", ".zlb"
+    };
+
+    /// <summary>
+    /// Loads a story or Blorb file. If the path has a Blorb extension
+    /// (.blorb, .zblorb, .blb, .zlb), it is parsed as a Blorb file and
+    /// the ZCOD executable is extracted. Otherwise it is loaded as a
+    /// raw story file.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if a Blorb file has no executable resource.
+    /// </exception>
+    public void Load(string path, IInputStream inputStream, IScreen screen)
+    {
+        string ext = Path.GetExtension(path);
+        if (BlorbExtensions.Contains(ext))
+        {
+            var blorb = BlorbReader.Load(File.ReadAllBytes(path));
+            LoadFromBlorb(blorb, null, inputStream, screen);
+        }
+        else
+        {
+            _memory.LoadStory(path);
+            _inputStream = inputStream;
+            Init(screen);
+        }
     }
 
     /// <summary>
@@ -60,6 +90,88 @@ public class Interpreter
     public void Load(byte[] storyData, IInputStream inputStream, IScreen screen)
     {
         _memory.LoadStory(storyData);
+        _inputStream = inputStream;
+        Init(screen);
+    }
+
+    /// <summary>
+    /// Loads a story file paired with a separate Blorb resource file.
+    /// The Blorb must not contain an executable resource (use the single-path
+    /// overload for Blorb files with embedded executables).
+    /// </summary>
+    /// <remarks>
+    /// Blorb "Executable Resource Chunks" — error if both Blorb exec
+    /// and standalone story are provided.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if the Blorb contains an executable (conflicting with the
+    /// standalone story), or if the Blorb's IFhd doesn't match the story.
+    /// </exception>
+    public void Load(string storyPath, string blorbPath, IInputStream inputStream, IScreen screen)
+    {
+        byte[] storyData = File.ReadAllBytes(storyPath);
+        var blorb = BlorbReader.Load(File.ReadAllBytes(blorbPath));
+        LoadFromBlorb(blorb, storyData, inputStream, screen);
+    }
+
+    /// <summary>
+    /// Loads from a pre-parsed Blorb. The Blorb must contain an Exec/0
+    /// resource of type 'ZCOD'.
+    /// </summary>
+    public void Load(BlorbReader blorb, IInputStream inputStream, IScreen screen)
+    {
+        LoadFromBlorb(blorb, null, inputStream, screen);
+    }
+
+    /// <summary>
+    /// Loads a standalone story with a pre-parsed resource-only Blorb.
+    /// The Blorb must not contain an executable resource.
+    /// </summary>
+    public void Load(BlorbReader blorb, byte[] storyData, IInputStream inputStream, IScreen screen)
+    {
+        LoadFromBlorb(blorb, storyData, inputStream, screen);
+    }
+
+    /// <summary>
+    /// Core Blorb loading logic. Handles both embedded-exec and
+    /// resource-only Blorb scenarios with validation.
+    /// </summary>
+    private void LoadFromBlorb(BlorbReader blorb, byte[]? standaloneStory,
+        IInputStream inputStream, IScreen screen)
+    {
+        bool hasExec = blorb.HasResource(BlorbUsage.Executable, 0);
+
+        // Blorb "Executable Resource Chunks" — conflicting executable
+        if (hasExec && standaloneStory != null)
+            throw new InvalidOperationException(
+                "Blorb contains an executable resource and a standalone " +
+                "story file was also provided. Use one or the other.");
+
+        if (!hasExec && standaloneStory == null)
+            throw new InvalidOperationException(
+                "No executable: Blorb has no 'Exec' resource and no " +
+                "standalone story file was provided.");
+
+        if (hasExec)
+        {
+            string execType = blorb.GetResourceType(BlorbUsage.Executable, 0);
+            if (execType != "ZCOD")
+                throw new InvalidOperationException(
+                    $"Blorb executable is '{execType}', not 'ZCOD'. " +
+                    "Only Z-code executables are supported.");
+
+            byte[] zcode = blorb.GetResource(BlorbUsage.Executable, 0);
+            _memory.LoadStory(zcode);
+        }
+        else
+        {
+            _memory.LoadStory(standaloneStory!);
+
+            // Blorb "The Game Identifier Chunk" — validate IFhd if present
+            blorb.ValidateIFhd(_memory);
+        }
+
+        Blorb = blorb;
         _inputStream = inputStream;
         Init(screen);
     }
