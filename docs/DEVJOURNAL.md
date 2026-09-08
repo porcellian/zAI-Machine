@@ -2274,3 +2274,72 @@ metadata extraction, entry decoding, search, sorting, and word lookup.
 - Synthetic V3: two entries, separators, search all (3)
 
 ---
+
+### Task 8.4 — Disassembler
+
+**Date:** 2026-09-07
+
+**Objective:** Create a disassembler that decodes Z-Machine instructions with
+mnemonics, operand types, store/branch targets, inline text, routine detection,
+cross-references, and plain-text export.
+
+**Design Decisions:**
+
+1. **Reuse of InstructionDecoder:** The disassembler uses the existing
+   `InstructionDecoder.Decode()` for instruction parsing, then applies its own
+   store/branch tables for the decode-only path (the interpreter's dispatch
+   interleaves store/branch decoding with execution). This keeps parsing
+   consistent between the interpreter and disassembler.
+
+2. **Store/branch tables mirror the interpreter:** The `DecodeStoreAndBranch`
+   method replicates the exact same per-opcode store/branch decisions as the
+   interpreter's dispatch methods, including all version-dependent cases
+   (0OP:5/6 save/restore V1-3 branch vs V4 store, 1OP:15 not/call_1n,
+   VAR:4 read store in V5+, 0OP:9 catch/pop).
+
+3. **Mnemonic tables with version awareness:** V3 `not` vs V5 `call_1n`,
+   V3 `read` vs V5 `aread`, V3 `save`/`restore` vs V5 EXT forms. The
+   mnemonic tables are public so tests can verify them directly without
+   constructing full instructions.
+
+4. **Routine detection heuristic:** Scans from high memory looking for
+   valid local-count bytes (0–15) preceded by a zero padding byte. Also
+   follows call targets from disassembled code to discover routines not
+   reachable from the heuristic scan alone. Not perfect — static analysis
+   of computed calls is impossible — but sufficient for developer tooling.
+
+5. **Cross-reference building:** For each routine, disassembles its code
+   and collects call targets, then inverts the map: for each routine address,
+   lists call sites. Operates on a provided routine list rather than
+   scanning the whole file.
+
+6. **Inline text extraction:** `print` (0OP:2) and `print_ret` (0OP:3)
+   have inline Z-strings after the opcode byte. The disassembler decodes
+   these via `TextDecoder.DecodeZString` and advances past them.
+
+7. **Terminator detection:** A routine ends at rtrue, rfalse, ret,
+   ret_popped, quit, print_ret, restart, or jump. This is conservative
+   (could miss fallthrough code) but safe for the common case.
+
+**Spec References:**
+- ZSpec S4 — Instruction encoding forms (long, short, variable, extended)
+- ZSpec S4.5 — Store byte
+- ZSpec S4.7 — Branch offset encoding
+- ZSpec S14/S15 — Opcode tables by form and version
+
+**Test Coverage (27 tests):**
+- Zork I main routine: disassembles, starts with call, valid local count,
+  valid mnemonics (4)
+- Single instruction: address/bytes, contiguous range (2)
+- Operand formatting: variable refs, constants (2)
+- Store and branch: arrow prefix, question mark prefix (2)
+- Inline text: print instructions decoded (1)
+- Routine detection: finds main, valid local counts (2)
+- Cross-references: build from subset (1)
+- Export: header text, hex addresses (2)
+- Mnemonics: 2OP known, 1OP version-dependent, 0OP known, VAR known,
+  EXT known (5)
+- Multi-version: Mind V4, Sherlock V5, Czech V5 mnemonics (3)
+- Synthetic: rtrue, add with store, je with branch (3)
+
+---
