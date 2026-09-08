@@ -2221,3 +2221,56 @@ with tree traversal, detail extraction, search/filter, and plain-text export.
 - Synthetic V3: parent/child, tree structure, search, export, attributes (5)
 
 ---
+
+### Task 8.3 — Dictionary Viewer
+
+**Date:** 2026-09-07
+
+**Objective:** Create a read-only viewer for the Z-Machine dictionary with
+metadata extraction, entry decoding, search, sorting, and word lookup.
+
+**Design Decisions:**
+
+1. **Self-contained construction:** Like `ObjectTreeViewer`, the
+   `DictionaryViewer` takes only a `Memory` instance and creates its own
+   `Dictionary`, `TextDecoder`, and `TextEncoder` internally. No coupling
+   to the `Interpreter` class.
+
+2. **Reuse of existing Dictionary class:** Rather than duplicating the
+   parsing logic, the viewer wraps the existing `Dictionary` class and adds
+   the entry-reading, search, and sorting layer on top. This keeps the
+   parsing consistent with the interpreter.
+
+3. **Entry decoding via TextDecoder:** Dictionary entries are standard
+   Z-strings with the top bit set on the last word, so `DecodeZString` works
+   directly on them. No special decoding path needed.
+
+4. **Game-specific data exposed as raw hex:** The bytes following the encoded
+   text in each entry are game-specific (typically part-of-speech flags).
+   Since interpretation varies by game, they're exposed as hex rather than
+   decoded.
+
+5. **Three sort fields:** Entries can be sorted by address, decoded text, or
+   entry number, ascending or descending. The default order (by entry number)
+   matches the on-disk order.
+
+6. **Dual search modes:** `Search()` filters by substring on decoded text
+   (for browsing), while `LookupWord()` uses the dictionary's binary/linear
+   search on encoded form (for exact matching).
+
+**Spec References:**
+- ZSpec S13 — Dictionary layout, separators, entry structure
+- ZSpec S3 — Z-character encoding used for dictionary entries
+
+**Test Coverage (24 tests):**
+- Metadata: reasonable values, standard separators, V5 encoded length,
+  entries start after header (4)
+- Known words: mailbox, open, take lookups, not-found (4)
+- Entry content: all have text, encoded hex, count matches, data bytes,
+  addresses increasing (5)
+- Sorting: alphabetical, by address, descending reversal (3)
+- Search: case-insensitive, not-found, partial match (3)
+- Multi-version: Mind V4, Sherlock V5 (2)
+- Synthetic V3: two entries, separators, search all (3)
+
+---
