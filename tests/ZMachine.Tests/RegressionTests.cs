@@ -14,6 +14,10 @@ public class RegressionTests
 
     #region Zork I — V3
 
+    /// <summary>
+    /// Verifies that Zork I boots and prints opening text mentioning
+    /// ZORK and "West of House".
+    /// </summary>
     [Fact]
     public void Zork1_Boots_PrintsOpeningText()
     {
@@ -27,6 +31,9 @@ public class RegressionTests
         Assert.Contains("West of House", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Verifies that "open mailbox" produces output mentioning a leaflet.
+    /// </summary>
     [Fact]
     public void Zork1_OpenMailbox_FindsLeaflet()
     {
@@ -39,6 +46,10 @@ public class RegressionTests
         Assert.Contains("leaflet", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Verifies that "read leaflet" after opening the mailbox prints
+    /// the leaflet text ("ZORK is a game").
+    /// </summary>
     [Fact]
     public void Zork1_ReadLeaflet_PrintsText()
     {
@@ -51,6 +62,9 @@ public class RegressionTests
         Assert.Contains("ZORK is a game", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Runs the mailbox script file and verifies leaflet output.
+    /// </summary>
     [Fact]
     public void Zork1_ScriptFile_MailboxSequence()
     {
@@ -67,6 +81,10 @@ public class RegressionTests
         Assert.Contains("leaflet", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Runs the five-move exploration script and verifies multi-turn
+    /// output including movement to North of House.
+    /// </summary>
     [Fact]
     public void Zork1_ScriptFile_ExplorationSequence()
     {
@@ -82,10 +100,13 @@ public class RegressionTests
         Assert.False(harness.HitInstructionLimit);
         Assert.Contains("West of House", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("mailbox", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
-        // Going north should reach the forest.
         Assert.Contains("North of House", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Verifies that "inventory" at game start produces a response
+    /// about carrying nothing.
+    /// </summary>
     [Fact]
     public void Zork1_Inventory_AtStart()
     {
@@ -95,7 +116,6 @@ public class RegressionTests
         var harness = TestHarness.Run(Zork1Path,
             ["inventory", "quit", "y"]);
 
-        // Should say you're carrying nothing or be empty-handed.
         string output = harness.Screen.Output;
         bool hasResponse = output.Contains("carrying", StringComparison.OrdinalIgnoreCase)
                         || output.Contains("empty-handed", StringComparison.OrdinalIgnoreCase)
@@ -103,6 +123,10 @@ public class RegressionTests
         Assert.True(hasResponse, "Expected inventory response in output");
     }
 
+    /// <summary>
+    /// Verifies that "go north" from the starting location reaches
+    /// North of House.
+    /// </summary>
     [Fact]
     public void Zork1_GoNorth_ReachesNorthOfHouse()
     {
@@ -115,6 +139,10 @@ public class RegressionTests
         Assert.Contains("North of House", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Sanity-checks that boot + quit takes a reasonable number of
+    /// instructions (more than 100, fewer than 1M).
+    /// </summary>
     [Fact]
     public void Zork1_InstructionCount_IsReasonable()
     {
@@ -123,7 +151,6 @@ public class RegressionTests
 
         var harness = TestHarness.Run(Zork1Path, ["quit", "y"]);
 
-        // Boot + quit should take far less than the default limit.
         Assert.True(harness.InstructionsExecuted > 100,
             "Expected more than 100 instructions for boot");
         Assert.True(harness.InstructionsExecuted < 1_000_000,
@@ -134,6 +161,9 @@ public class RegressionTests
 
     #region Minizork — V3
 
+    /// <summary>
+    /// Verifies that Minizork boots and prints "West of House".
+    /// </summary>
     [Fact]
     public void Minizork_Boots()
     {
@@ -150,6 +180,10 @@ public class RegressionTests
 
     #region Czech — V5 Conformance
 
+    /// <summary>
+    /// Verifies that the Czech V5 conformance test boots and prints
+    /// its header text.
+    /// </summary>
     [Fact]
     public void Czech_Boots_PrintsHeader()
     {
@@ -159,7 +193,6 @@ public class RegressionTests
         var harness = TestHarness.Run(CzechPath, [""]);
 
         Assert.False(harness.HitInstructionLimit);
-        // Czech conformance test prints its name on boot.
         Assert.Contains("Czech", harness.Screen.Output, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -167,13 +200,16 @@ public class RegressionTests
 
     #region Harness Infrastructure
 
+    /// <summary>
+    /// Verifies that a very small instruction limit aborts the run
+    /// before any input is consumed.
+    /// </summary>
     [Fact]
     public void TestHarness_InstructionLimit_Aborts()
     {
         if (!File.Exists(Zork1Path))
             return;
 
-        // A very small instruction limit should abort before reading any input.
         var harness = TestHarness.Run(Zork1Path, ["quit", "y"],
             instructionLimit: 100);
 
@@ -181,6 +217,10 @@ public class RegressionTests
         Assert.Equal(100, harness.InstructionsExecuted);
     }
 
+    /// <summary>
+    /// Verifies that ScriptedInputStream.FromFile skips comment lines
+    /// and blank lines.
+    /// </summary>
     [Fact]
     public void ScriptedInputStream_FromFile_SkipsCommentsAndBlanks()
     {
@@ -204,6 +244,10 @@ public class RegressionTests
         }
     }
 
+    /// <summary>
+    /// Verifies that an exhausted ScriptedInputStream returns "quit"
+    /// as a safety fallback.
+    /// </summary>
     [Fact]
     public void ScriptedInputStream_Exhausted_ReturnsQuit()
     {
@@ -216,6 +260,10 @@ public class RegressionTests
         Assert.Equal("quit", text2);
     }
 
+    /// <summary>
+    /// Verifies that LinesConsumed tracks the number of ReadLine calls
+    /// that consumed scripted input.
+    /// </summary>
     [Fact]
     public void ScriptedInputStream_TracksLinesConsumed()
     {
@@ -229,6 +277,10 @@ public class RegressionTests
         Assert.Equal(3, stream.LinesConsumed);
     }
 
+    /// <summary>
+    /// Verifies that CaptureScreen records Print, PrintChar, and
+    /// NewLine output into a single string.
+    /// </summary>
     [Fact]
     public void CaptureScreen_CapturesOutput()
     {
@@ -241,6 +293,10 @@ public class RegressionTests
         Assert.Equal("Hello W" + Environment.NewLine, screen.Output);
     }
 
+    /// <summary>
+    /// Verifies that CaptureScreen records status lines separately
+    /// from main output.
+    /// </summary>
     [Fact]
     public void CaptureScreen_CapturesStatusLines()
     {
