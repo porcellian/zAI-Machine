@@ -2343,3 +2343,83 @@ cross-references, and plain-text export.
 - Synthetic: rtrue, add with store, je with branch (3)
 
 ---
+
+### Task 8.5 — Interactive Debugger
+
+**Date:** 2026-09-08
+
+**Objective:** Create a debugger engine that wraps the `Interpreter` class with
+step-through execution, breakpoints, state inspection, execution trace, and
+watch expressions — the programmatic layer that a future GUI debugger will drive.
+
+**Design Decisions:**
+
+1. **Wrapper architecture:** `Debugger` takes a loaded `Interpreter` and drives
+   its `Step()` method with debugger logic layered on top. This avoids modifying
+   the interpreter's execution path — the debugger is an external controller,
+   not an intrusive hook. The interpreter doesn't know it's being debugged.
+
+2. **Three breakpoint types:** Address (PC == target), Conditional (global
+   variable == value), and Opcode (mnemonic match). Each is represented by a
+   single `Breakpoint` class with type-discriminated constructors. Breakpoints
+   have an `Enabled` flag for disable-without-remove. Conditional breakpoints
+   use `ReadVariable(globalVar + 16)` to read the global without stack side
+   effects.
+
+3. **StepOver via call-depth tracking:** Before executing the first instruction,
+   records `CallStack.FrameCount`. If the instruction entered a call (depth
+   increased), continues stepping until depth returns to the original level,
+   checking breakpoints each step. This handles nested calls naturally — the
+   depth comparison catches the return from any depth of nesting.
+
+4. **Continue with breakpoint checking:** Checks breakpoints *before* each
+   instruction execution, so the breakpoint fires at the instruction about to
+   execute rather than after it. This matches the expected debugger UX where
+   the stopped PC is the breakpoint address.
+
+5. **State snapshots as records:** `FrameSnapshot`, `LocalsSnapshot`, and
+   `MemoryDump` are immutable records returned by inspection methods. The caller
+   gets a frozen snapshot — no references to live interpreter state that could
+   change on the next step.
+
+6. **Locals 1-indexed in frame:** Frame locals are stored 1-indexed (slot 0
+   unused) per the Z-Machine spec. The snapshot copies `Locals[1..LocalCount]`
+   into a 0-indexed array for display convenience.
+
+7. **Rolling trace log:** Default 1000 entries, configurable via
+   `MaxTraceEntries`. Oldest entries are dropped when the limit is reached.
+   Each entry records address, mnemonic, and sequence number. Disabling trace
+   stops recording but preserves existing entries.
+
+8. **Watch expression parsing:** Supports four formats:
+   - `G00`–`GEF`: Global variables 0–239 (read via `ReadVariable(idx + 16)`)
+   - `L00`–`L0E`: Local variables 0–14 (read via `ReadVariable(idx + 1)`)
+   - `SP`: Stack top (peek, not pop — uses `EvalStack.Peek()`)
+   - `[$1234]`: Memory byte at hex address (via `Memory.ReadByte`)
+   Invalid expressions set the `Error` field instead of throwing.
+
+9. **Memory dump with ASCII sidebar:** Formatted as 16-byte rows with hex
+   address, hex bytes (grouped 8+8), and printable ASCII sidebar. Non-printable
+   bytes shown as `.`. Includes the static memory base address for reference.
+
+**Spec References:**
+- ZSpec S4–S6 — Instruction encoding, routines, variables (context for state inspection)
+- ZSpec S6.3 — Per-routine evaluation stack
+- ZSpec S6.4 — Variable numbering: 0=SP, 1-15=locals, 16-255=globals
+
+**Test Coverage (32 tests):**
+- Step Into: 10 instructions PC advances, each step has valid instruction,
+  returns Halted when stopped (3)
+- Step Over: call returns to same depth (1)
+- Continue: stops at breakpoint, hits instruction limit (2)
+- Address breakpoints: add/remove, disabled doesn't trigger, clear all (3)
+- Conditional breakpoints: correct type and fields (1)
+- Opcode breakpoints: triggers on mnemonic (1)
+- State inspection: call stack non-empty, locals inspectable, 240 globals,
+  eval stack accessible, call stack grows on call (5)
+- Memory dump: formatted hex output, static base, header version byte (3)
+- Trace: records steps, exports text, rolling log truncates, disabled no
+  recording, clear empties (5)
+- Watch expressions: global evaluates, local evaluates, memory evaluates,
+  invalid sets error, updates on step, remove/clear, SP evaluates (7)
+- Multi-version: Czech V5 step into (1)
