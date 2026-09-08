@@ -1138,7 +1138,7 @@ that all themes will render through.
 
 ---
 
-### 11.2 — Bitmap Font System
+### 11.2 — Bitmap Font System ✅
 
 Vintage themes require pixel-perfect bitmap fonts — no TrueType,
 no anti-aliasing. Render glyphs as SkiaSharp pixel data.
