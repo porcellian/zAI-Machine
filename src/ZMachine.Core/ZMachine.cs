@@ -1,0 +1,861 @@
+namespace ZMachine.Core;
+
+/// <summary>
+/// The central Z-Machine interpreter: loads a story file, initialises all
+/// subsystems, and runs the fetch-decode-execute loop. All Phase 3–6
+/// opcodes are wired into a dispatch table keyed by (Form, Opcode).
+/// </summary>
+/// <remarks>
+/// ZSpec S5 — Main execution loop.
+/// ZSpec S6 — Variable/stack access during execution.
+/// ZSpec S15 — Complete opcode table.
+/// </remarks>
+public class Interpreter
+{
+    private Memory _memory = new();
+    private MachineState _state = null!;
+    private TextDecoder _textDecoder = null!;
+    private TextEncoder _textEncoder = null!;
+    private ObjectTable _objectTable = null!;
+    private Dictionary _dictionary = null!;
+    private Tokenizer _tokenizer = null!;
+    private OutputStreamManager _outputStreams = null!;
+    private ReadHandler _readHandler = null!;
+    private ArithmeticOps _arithmeticOps = null!;
+    private ObjectOps _objectOps = null!;
+    private TextOutputOps _textOutputOps = null!;
+    private ControlFlowOps _controlFlowOps = null!;
+    private ScreenStyleOps _screenStyleOps = null!;
+    private StatusLineHandler _statusLineHandler = null!;
+
+    private IInputStream _inputStream = null!;
+    private int _version;
+    private bool _running;
+
+    /// <summary>The loaded story file memory.</summary>
+    public Memory Memory => _memory;
+
+    /// <summary>The machine execution state (PC, call stack, variables).</summary>
+    public MachineState State => _state;
+
+    /// <summary>The output stream manager.</summary>
+    public OutputStreamManager OutputStreams => _outputStreams;
+
+    /// <summary>Whether the machine is currently running.</summary>
+    public bool Running => _running;
+
+    /// <summary>
+    /// Loads a story file, parses the header, and initialises all subsystems.
+    /// </summary>
+    public void Load(string storyPath, IInputStream inputStream, IScreen screen)
+    {
+        _memory.LoadStory(storyPath);
+        _inputStream = inputStream;
+        Init(screen);
+    }
+
+    /// <summary>
+    /// Loads from a byte array (for testing). Initialises all subsystems.
+    /// </summary>
+    public void Load(byte[] storyData, IInputStream inputStream, IScreen screen)
+    {
+        _memory.LoadStory(storyData);
+        _inputStream = inputStream;
+        Init(screen);
+    }
+
+    private void Init(IScreen screen)
+    {
+        _version = _memory.ReadByte(0x00);
+        int globalsAddr = _memory.ReadWord(0x0C);
+        int abbrAddr = _memory.ReadWord(0x18);
+        int dictAddr = _memory.ReadWord(0x08);
+        int objTableAddr = _memory.ReadWord(0x0A);
+        ushort routinesOffset = _version is 6 or 7 ? _memory.ReadWord(0x28) : (ushort)0;
+        int alphabetAddr = _version >= 5 ? _memory.ReadWord(0x34) : 0;
+
+        _state = new MachineState(_memory, globalsAddr);
+        _textDecoder = new TextDecoder(_memory, _version, abbrAddr, alphabetAddr);
+        _textEncoder = new TextEncoder(_version, alphabetAddr, alphabetAddr > 0 ? _memory : null);
+        _objectTable = new ObjectTable(_memory, _version, objTableAddr);
+
+        _dictionary = new Dictionary(_memory, _version, _textEncoder);
+        _dictionary.Parse(dictAddr);
+
+        _tokenizer = new Tokenizer(_version, _textEncoder);
+        _readHandler = new ReadHandler(_version, _memory, _tokenizer, _dictionary);
+
+        _outputStreams = new OutputStreamManager(_memory);
+        _outputStreams.ScreenPrint = screen.Print;
+
+        _arithmeticOps = new ArithmeticOps();
+        _objectOps = new ObjectOps(_objectTable, _textDecoder);
+        _textOutputOps = new TextOutputOps(_memory, _textDecoder, _textEncoder, _outputStreams, _version);
+        _controlFlowOps = new ControlFlowOps(_memory, _state, _version, routinesOffset);
+        _screenStyleOps = new ScreenStyleOps(_memory, _version);
+        _statusLineHandler = new StatusLineHandler(_memory, _objectTable, _textDecoder);
+
+        // Wire screen callbacks.
+        _screenStyleOps.OnSetTextStyle = screen.SetTextStyle;
+        _screenStyleOps.OnEraseLine = screen.EraseLine;
+        _screenStyleOps.OnBufferMode = screen.BufferMode;
+        _screenStyleOps.OnGetCursor = screen.GetScreenSize; // placeholder
+        _screenStyleOps.OnSetFont = f => { return f; };
+
+        // Initial PC and base frame.
+        if (_version == 6)
+        {
+            ushort packed = _memory.ReadWord(0x06);
+            _controlFlowOps.Call(packed, [], 0, 0, true, 0);
+        }
+        else
+        {
+            _state.PC = _memory.ReadWord(0x06);
+            _state.CallStack.PushFrame(new CallFrame(0, 0, false, 0, 0));
+        }
+    }
+
+    /// <summary>
+    /// Runs the main execution loop until @quit or an unrecoverable error.
+    /// </summary>
+    public void Run()
+    {
+        _running = true;
+        while (_running)
+            Step();
+    }
+
+    /// <summary>
+    /// Executes a single instruction at the current PC.
+    /// </summary>
+    public void Step()
+    {
+        var inst = InstructionDecoder.Decode(_memory, _state.PC);
+
+        switch (inst.Form)
+        {
+            case OpcodeForm.Op2: Dispatch2OP(ref inst); break;
+            case OpcodeForm.Op1: Dispatch1OP(ref inst); break;
+            case OpcodeForm.Op0: Dispatch0OP(ref inst); break;
+            case OpcodeForm.Var: DispatchVAR(ref inst); break;
+            case OpcodeForm.Ext: DispatchEXT(ref inst); break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown opcode form at ${inst.Address:X4}");
+        }
+    }
+
+    /// <summary>Resolves variable-type operands to their values.</summary>
+    private ushort[] ResolveOperands(ref Instruction inst)
+    {
+        var resolved = new ushort[inst.OperandCount];
+        for (int i = 0; i < inst.OperandCount; i++)
+        {
+            resolved[i] = inst.OperandTypes[i] == OperandType.Variable
+                ? _state.ReadVariable((byte)inst.Operands[i])
+                : inst.Operands[i];
+        }
+        return resolved;
+    }
+
+    /// <summary>Stores a result and advances PC.</summary>
+    private void StoreAndAdvance(ref Instruction inst, ushort value)
+    {
+        _state.StoreResult(inst.StoreVariable, value);
+        _state.PC = inst.NextAddress;
+    }
+
+    /// <summary>Handles a branch condition and advances PC.</summary>
+    private void BranchAndAdvance(ref Instruction inst, bool condition)
+    {
+        var result = MachineState.ExecuteBranch(condition, inst.Branch, inst.NextAddress);
+        switch (result.Action)
+        {
+            case BranchAction.DontBranch:
+                _state.PC = inst.NextAddress;
+                break;
+            case BranchAction.Jump:
+                _state.PC = result.TargetAddress;
+                break;
+            case BranchAction.ReturnTrue:
+                _controlFlowOps.ReturnTrue();
+                break;
+            case BranchAction.ReturnFalse:
+                _controlFlowOps.ReturnFalse();
+                break;
+        }
+    }
+
+    /// <summary>Handles store+branch (e.g. get_child, get_sibling, scan_table).</summary>
+    private void StoreBranchAndAdvance(ref Instruction inst, ushort value, bool condition)
+    {
+        _state.StoreResult(inst.StoreVariable, value);
+        BranchAndAdvance(ref inst, condition);
+    }
+
+    #region 2OP dispatch
+
+    private void Dispatch2OP(ref Instruction inst)
+    {
+        // Decode store/branch before resolving operands.
+        switch (inst.Opcode)
+        {
+            case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 10:
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
+            case 8: case 9: case 15: case 16: case 17: case 18: case 19:
+            case 20: case 21: case 22: case 23: case 24: case 25:
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+        }
+
+        var ops = ResolveOperands(ref inst);
+
+        switch (inst.Opcode)
+        {
+            case 1: // je: branch if a == any of b,c,d
+                BranchAndAdvance(ref inst, ArithmeticOps.JumpEqual(ops, inst.OperandCount));
+                break;
+            case 2: // jl
+                BranchAndAdvance(ref inst, ArithmeticOps.JumpLessThan(ops[0], ops[1]));
+                break;
+            case 3: // jg
+                BranchAndAdvance(ref inst, ArithmeticOps.JumpGreaterThan(ops[0], ops[1]));
+                break;
+            case 4: // dec_chk (indirect var ref)
+                BranchAndAdvance(ref inst,
+                    VariableMemoryOps.DecChk(_state, (byte)inst.Operands[0], (short)ops[1]));
+                break;
+            case 5: // inc_chk (indirect var ref)
+                BranchAndAdvance(ref inst,
+                    VariableMemoryOps.IncChk(_state, (byte)inst.Operands[0], (short)ops[1]));
+                break;
+            case 6: // jin
+                BranchAndAdvance(ref inst, _objectOps.JumpIn(ops[0], ops[1]));
+                break;
+            case 7: // test
+                BranchAndAdvance(ref inst, ArithmeticOps.Test(ops[0], ops[1]));
+                break;
+            case 8: // or
+                StoreAndAdvance(ref inst, ArithmeticOps.Or(ops[0], ops[1]));
+                break;
+            case 9: // and
+                StoreAndAdvance(ref inst, ArithmeticOps.And(ops[0], ops[1]));
+                break;
+            case 10: // test_attr
+                BranchAndAdvance(ref inst, _objectOps.TestAttr(ops[0], ops[1]));
+                break;
+            case 11: // set_attr
+                _objectOps.SetAttr(ops[0], ops[1]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 12: // clear_attr
+                _objectOps.ClearAttr(ops[0], ops[1]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 13: // store (indirect)
+                VariableMemoryOps.Store(_state, (byte)inst.Operands[0], ops[1]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 14: // insert_obj
+                _objectOps.InsertObj(ops[0], ops[1]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 15: // loadw
+                StoreAndAdvance(ref inst, VariableMemoryOps.LoadWord(_memory, ops[0], ops[1]));
+                break;
+            case 16: // loadb
+                StoreAndAdvance(ref inst, VariableMemoryOps.LoadByte(_memory, ops[0], ops[1]));
+                break;
+            case 17: // get_prop
+                StoreAndAdvance(ref inst, _objectOps.GetProp(ops[0], ops[1]));
+                break;
+            case 18: // get_prop_addr
+                StoreAndAdvance(ref inst, _objectOps.GetPropAddr(ops[0], ops[1]));
+                break;
+            case 19: // get_next_prop
+                StoreAndAdvance(ref inst, _objectOps.GetNextProp(ops[0], ops[1]));
+                break;
+            case 20: // add
+                StoreAndAdvance(ref inst, ArithmeticOps.Add(ops[0], ops[1]));
+                break;
+            case 21: // sub
+                StoreAndAdvance(ref inst, ArithmeticOps.Sub(ops[0], ops[1]));
+                break;
+            case 22: // mul
+                StoreAndAdvance(ref inst, ArithmeticOps.Mul(ops[0], ops[1]));
+                break;
+            case 23: // div
+                StoreAndAdvance(ref inst, ArithmeticOps.Div(ops[0], ops[1]));
+                break;
+            case 24: // mod
+                StoreAndAdvance(ref inst, ArithmeticOps.Mod(ops[0], ops[1]));
+                break;
+            case 25: // call_2s (V4+)
+                InvokeCall(ref inst, ops, 1, store: true);
+                break;
+            case 26: // call_2n (V5+)
+                InvokeCall(ref inst, ops, 1, store: false);
+                break;
+            case 27: // set_colour (V5+)
+                _screenStyleOps.SetColour((short)ops[0], (short)ops[1]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 28: // throw (V5+)
+                _controlFlowOps.Throw(ops[0], ops[1]);
+                break;
+            default:
+                UnknownOpcode(ref inst);
+                break;
+        }
+    }
+
+    #endregion
+
+    #region 1OP dispatch
+
+    private void Dispatch1OP(ref Instruction inst)
+    {
+        switch (inst.Opcode)
+        {
+            case 0: // jz
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
+            case 1: // get_sibling (store+branch)
+            case 2: // get_child (store+branch)
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
+            case 3: case 4: case 8: case 14:
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+            case 15: // call_1n (V5+) or not (V1-4, store)
+                if (_version >= 5)
+                    { /* no store for call_1n */ }
+                else
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+        }
+
+        var ops = ResolveOperands(ref inst);
+
+        switch (inst.Opcode)
+        {
+            case 0: // jz
+                BranchAndAdvance(ref inst, ArithmeticOps.JumpZero(ops[0]));
+                break;
+            case 1: // get_sibling
+            {
+                var (sib, hasSib) = _objectOps.GetSibling(ops[0]);
+                StoreBranchAndAdvance(ref inst, sib, hasSib);
+                break;
+            }
+            case 2: // get_child
+            {
+                var (child, hasChild) = _objectOps.GetChild(ops[0]);
+                StoreBranchAndAdvance(ref inst, child, hasChild);
+                break;
+            }
+            case 3: // get_parent
+                StoreAndAdvance(ref inst, _objectOps.GetParent(ops[0]));
+                break;
+            case 4: // get_prop_len
+                StoreAndAdvance(ref inst, _objectOps.GetPropLen(ops[0]));
+                break;
+            case 5: // inc (indirect)
+                VariableMemoryOps.Inc(_state, (byte)inst.Operands[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 6: // dec (indirect)
+                VariableMemoryOps.Dec(_state, (byte)inst.Operands[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 7: // print_addr
+                _textOutputOps.PrintAddr(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 8: // call_1s (V4+)
+                InvokeCall(ref inst, ops, 0, store: true);
+                break;
+            case 9: // remove_obj
+                _objectOps.RemoveObj(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 10: // print_obj
+            {
+                string name = _objectOps.PrintObj(ops[0]);
+                _outputStreams.Print(name);
+                _state.PC = inst.NextAddress;
+                break;
+            }
+            case 11: // ret
+                _controlFlowOps.Return(ops[0]);
+                break;
+            case 12: // jump
+                _controlFlowOps.Jump((short)ops[0], inst.NextAddress);
+                break;
+            case 13: // print_paddr
+            {
+                ushort stringsOffset = _version is 6 or 7 ? _memory.ReadWord(0x2A) : (ushort)0;
+                int addr = AddressHelper.UnpackStringAddress(ops[0], _version, stringsOffset);
+                _textOutputOps.PrintPAddr(addr);
+                _state.PC = inst.NextAddress;
+                break;
+            }
+            case 14: // load (indirect)
+                StoreAndAdvance(ref inst,
+                    VariableMemoryOps.Load(_state, (byte)inst.Operands[0]));
+                break;
+            case 15: // call_1n (V5+) or not (V1-4)
+                if (_version >= 5)
+                    InvokeCall(ref inst, ops, 0, store: false);
+                else
+                    StoreAndAdvance(ref inst, ArithmeticOps.Not(ops[0]));
+                break;
+            default:
+                UnknownOpcode(ref inst);
+                break;
+        }
+    }
+
+    #endregion
+
+    #region 0OP dispatch
+
+    private void Dispatch0OP(ref Instruction inst)
+    {
+        switch (inst.Opcode)
+        {
+            case 9: // catch (V5+, store) or pop (V1-4)
+                if (_version >= 5)
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+            case 13: // verify (branch)
+            case 15: // piracy (branch)
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
+        }
+
+        switch (inst.Opcode)
+        {
+            case 0: // rtrue
+                _controlFlowOps.ReturnTrue();
+                break;
+            case 1: // rfalse
+                _controlFlowOps.ReturnFalse();
+                break;
+            case 2: // print (inline text)
+            {
+                int byteLen = _textOutputOps.Print(inst.NextAddress);
+                _state.PC = inst.NextAddress + byteLen;
+                break;
+            }
+            case 3: // print_ret (inline text + newline + rtrue)
+            {
+                int byteLen = _textOutputOps.PrintRet(inst.NextAddress);
+                _state.PC = inst.NextAddress + byteLen;
+                _controlFlowOps.ReturnTrue();
+                break;
+            }
+            case 4: // nop
+                _state.PC = inst.NextAddress;
+                break;
+            case 5: // save (V1-4 only; V5+ uses EXT)
+                // Stub: always fail for now.
+                if (_version <= 3)
+                {
+                    InstructionDecoder.DecodeBranch(_memory, ref inst);
+                    BranchAndAdvance(ref inst, false);
+                }
+                else if (_version == 4)
+                {
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                    StoreAndAdvance(ref inst, 0);
+                }
+                else
+                {
+                    _state.PC = inst.NextAddress;
+                }
+                break;
+            case 6: // restore (V1-4 only; V5+ uses EXT)
+                if (_version <= 3)
+                {
+                    InstructionDecoder.DecodeBranch(_memory, ref inst);
+                    BranchAndAdvance(ref inst, false);
+                }
+                else if (_version == 4)
+                {
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                    StoreAndAdvance(ref inst, 0);
+                }
+                else
+                {
+                    _state.PC = inst.NextAddress;
+                }
+                break;
+            case 7: // restart
+                _controlFlowOps.Restart();
+                break;
+            case 8: // ret_popped
+                _controlFlowOps.ReturnPopped();
+                break;
+            case 9: // catch (V5+) or pop (V1-4)
+                if (_version >= 5)
+                    StoreAndAdvance(ref inst, _controlFlowOps.Catch());
+                else
+                {
+                    _state.ReadVariable(0); // pop
+                    _state.PC = inst.NextAddress;
+                }
+                break;
+            case 10: // quit
+                _running = false;
+                break;
+            case 11: // new_line
+                _textOutputOps.NewLine();
+                _state.PC = inst.NextAddress;
+                break;
+            case 12: // show_status (V3)
+                if (_version <= 3)
+                {
+                    var (loc, score) = _statusLineHandler.BuildStatusLine();
+                    // Show via screen if callback is available.
+                }
+                _state.PC = inst.NextAddress;
+                break;
+            case 13: // verify
+                BranchAndAdvance(ref inst, _controlFlowOps.Verify());
+                break;
+            case 15: // piracy
+                BranchAndAdvance(ref inst, _controlFlowOps.Piracy());
+                break;
+            default:
+                UnknownOpcode(ref inst);
+                break;
+        }
+    }
+
+    #endregion
+
+    #region VAR dispatch
+
+    private void DispatchVAR(ref Instruction inst)
+    {
+        // Decode store/branch per opcode.
+        switch (inst.Opcode)
+        {
+            case 0: case 7: case 12: case 22:
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+            case 4: // read: store in V5+
+                if (_version >= 5)
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+            case 23: // scan_table: store+branch
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
+            case 24: // not (V5+, store)
+                if (_version >= 5)
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+            case 31: // check_arg_count (branch)
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
+        }
+
+        var ops = ResolveOperands(ref inst);
+
+        switch (inst.Opcode)
+        {
+            case 0: // call_vs / call (store)
+                InvokeCall(ref inst, ops, inst.OperandCount - 1, store: true);
+                break;
+            case 1: // storew
+                VariableMemoryOps.StoreWord(_memory, ops[0], ops[1], ops[2]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 2: // storeb
+                VariableMemoryOps.StoreByte(_memory, ops[0], ops[1], (byte)ops[2]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 3: // put_prop
+                _objectOps.PutProp(ops[0], ops[1], ops[2]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 4: // read / aread
+                ExecuteRead(ref inst, ops);
+                break;
+            case 5: // print_char
+                _textOutputOps.PrintChar(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 6: // print_num
+                _textOutputOps.PrintNum(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 7: // random
+                StoreAndAdvance(ref inst, _arithmeticOps.Random(ops[0]));
+                break;
+            case 8: // push
+                VariableMemoryOps.Push(_state, ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 9: // pull (indirect var ref)
+                VariableMemoryOps.Pull(_state, (byte)inst.Operands[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 10: // split_window
+                _state.PC = inst.NextAddress;
+                break;
+            case 11: // set_window
+                _state.PC = inst.NextAddress;
+                break;
+            case 12: // call_vs2 (store)
+                InvokeCall(ref inst, ops, inst.OperandCount - 1, store: true);
+                break;
+            case 13: // erase_window
+                _state.PC = inst.NextAddress;
+                break;
+            case 14: // erase_line
+                _screenStyleOps.EraseLine(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 15: // set_cursor
+                _state.PC = inst.NextAddress;
+                break;
+            case 16: // get_cursor
+                _screenStyleOps.GetCursor(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 17: // set_text_style
+                _screenStyleOps.SetTextStyle(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 18: // buffer_mode
+                _screenStyleOps.BufferMode(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 19: // output_stream
+            {
+                short stream = (short)ops[0];
+                int tableAddr = inst.OperandCount >= 2 ? ops[1] : 0;
+                _outputStreams.SelectStream(stream, tableAddr);
+                _state.PC = inst.NextAddress;
+                break;
+            }
+            case 20: // input_stream
+                _state.PC = inst.NextAddress;
+                break;
+            case 21: // sound_effect (stub)
+                _state.PC = inst.NextAddress;
+                break;
+            case 22: // read_char (store)
+            {
+                int ch = _inputStream.ReadChar();
+                StoreAndAdvance(ref inst, (ushort)ch);
+                break;
+            }
+            case 23: // scan_table (store+branch)
+            {
+                ushort form = inst.OperandCount >= 4 ? ops[3] : (ushort)0x82;
+                var (addr, found) = VariableMemoryOps.ScanTable(
+                    _memory, ops[0], ops[1], ops[2], form);
+                StoreBranchAndAdvance(ref inst, addr, found);
+                break;
+            }
+            case 24: // not (V5+)
+                if (_version >= 5)
+                    StoreAndAdvance(ref inst, ArithmeticOps.Not(ops[0]));
+                else
+                    _state.PC = inst.NextAddress;
+                break;
+            case 25: // call_vn (V5+)
+                InvokeCall(ref inst, ops, inst.OperandCount - 1, store: false);
+                break;
+            case 26: // call_vn2 (V5+)
+                InvokeCall(ref inst, ops, inst.OperandCount - 1, store: false);
+                break;
+            case 27: // tokenise (V5+)
+                ExecuteTokenise(ops, inst.OperandCount);
+                _state.PC = inst.NextAddress;
+                break;
+            case 28: // encode_text (V5+)
+                _textOutputOps.EncodeText(ops[0], ops[1], ops[2], ops[3]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 29: // copy_table (V5+)
+                VariableMemoryOps.CopyTable(_memory, ops[0], ops[1], (short)ops[2]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 30: // print_table (V5+)
+            {
+                ushort height = inst.OperandCount >= 3 ? ops[2] : (ushort)1;
+                ushort skip = inst.OperandCount >= 4 ? ops[3] : (ushort)0;
+                _textOutputOps.PrintTable(ops[0], ops[1], height, skip);
+                _state.PC = inst.NextAddress;
+                break;
+            }
+            case 31: // check_arg_count (branch)
+                BranchAndAdvance(ref inst, _controlFlowOps.CheckArgCount(ops[0]));
+                break;
+            default:
+                UnknownOpcode(ref inst);
+                break;
+        }
+    }
+
+    #endregion
+
+    #region EXT dispatch
+
+    private void DispatchEXT(ref Instruction inst)
+    {
+        switch (inst.Opcode)
+        {
+            case 0: case 1: case 2: case 3: case 4: case 9: case 10: case 12:
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
+        }
+
+        var ops = ResolveOperands(ref inst);
+
+        switch (inst.Opcode)
+        {
+            case 0: // save (store) — stub
+                StoreAndAdvance(ref inst, 0);
+                break;
+            case 1: // restore (store) — stub
+                StoreAndAdvance(ref inst, 0);
+                break;
+            case 2: // log_shift
+                StoreAndAdvance(ref inst, ArithmeticOps.LogShift(ops[0], (short)ops[1]));
+                break;
+            case 3: // art_shift
+                StoreAndAdvance(ref inst, ArithmeticOps.ArtShift(ops[0], (short)ops[1]));
+                break;
+            case 4: // set_font
+                StoreAndAdvance(ref inst, _screenStyleOps.SetFont(ops[0]));
+                break;
+            case 9: // save_undo
+                StoreAndAdvance(ref inst, _screenStyleOps.SaveUndo());
+                break;
+            case 10: // restore_undo
+                StoreAndAdvance(ref inst, _screenStyleOps.RestoreUndo());
+                break;
+            case 11: // print_unicode
+                _textOutputOps.PrintUnicode(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 12: // check_unicode
+                StoreAndAdvance(ref inst, _screenStyleOps.CheckUnicode(ops[0]));
+                break;
+            default:
+                // Unknown EXT opcodes: skip silently.
+                _state.PC = inst.NextAddress;
+                break;
+        }
+    }
+
+    #endregion
+
+    #region Complex opcode helpers
+
+    /// <summary>
+    /// Dispatches a call instruction. The first operand is the packed
+    /// routine address; remaining operands are arguments.
+    /// </summary>
+    private void InvokeCall(ref Instruction inst, ushort[] ops, int argCount, bool store)
+    {
+        ushort packedAddr = ops[0];
+
+        if (store)
+        {
+            // Store-variant calls read the store byte from the instruction.
+            if (!inst.HasStore)
+                InstructionDecoder.DecodeStore(_memory, ref inst);
+        }
+
+        var args = new ushort[argCount];
+        for (int i = 0; i < argCount; i++)
+            args[i] = ops[i + 1];
+
+        bool called = _controlFlowOps.Call(
+            packedAddr, args, argCount,
+            store ? inst.StoreVariable : (byte)0,
+            !store,
+            inst.NextAddress);
+
+        if (!called)
+        {
+            // Address 0: store 0 (for store variants) and advance.
+            if (store)
+                _state.StoreResult(inst.StoreVariable, 0);
+            _state.PC = inst.NextAddress;
+        }
+    }
+
+    /// <summary>
+    /// Executes the @read/@aread opcode. Shows status line in V1-3,
+    /// reads input, processes text/parse buffers.
+    /// </summary>
+    private void ExecuteRead(ref Instruction inst, ushort[] ops)
+    {
+        // V1-3: show status line before reading.
+        if (_version <= 3)
+        {
+            var (loc, score) = _statusLineHandler.BuildStatusLine();
+        }
+
+        int maxLen = _memory.ReadByte(ops[0]);
+        var (text, _) = _inputStream.ReadLine(maxLen);
+
+        ushort parseBuffer = inst.OperandCount >= 2 ? ops[1] : (ushort)0;
+        int termChar = _readHandler.ProcessRead(text, ops[0], parseBuffer);
+
+        if (_version >= 5)
+            StoreAndAdvance(ref inst, (ushort)termChar);
+        else
+            _state.PC = inst.NextAddress;
+    }
+
+    /// <summary>
+    /// Executes the @tokenise opcode (V5+).
+    /// </summary>
+    private void ExecuteTokenise(ushort[] ops, int operandCount)
+    {
+        int textBuf = ops[0];
+        int parseBuf = ops[1];
+
+        // Read the text from the text buffer (V5 format: byte 1 = count, text at byte 2).
+        int count = _memory.ReadByte(textBuf + 1);
+        var chars = new char[count];
+        for (int i = 0; i < count; i++)
+            chars[i] = (char)_memory.ReadByte(textBuf + 2 + i);
+        string text = new(chars);
+
+        int dictAddr = operandCount >= 3 && ops[2] != 0
+            ? ops[2]
+            : _memory.ReadWord(0x08);
+
+        var dict = _dictionary;
+        if (operandCount >= 3 && ops[2] != 0)
+        {
+            dict = new Dictionary(_memory, _version, _textEncoder);
+            dict.Parse(ops[2]);
+        }
+
+        bool flag = operandCount >= 4 && ops[3] != 0;
+
+        _tokenizer.Tokenize(text, dict, _memory, parseBuf, textBufferOffset: 2);
+    }
+
+    private void UnknownOpcode(ref Instruction inst)
+    {
+        string formName = inst.IsExtended ? "EXT" : inst.Form.ToString();
+        throw new InvalidOperationException(
+            $"Unknown opcode {formName}:{inst.Opcode} at ${inst.Address:X4}");
+    }
+
+    #endregion
+}

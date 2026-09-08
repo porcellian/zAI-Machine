@@ -1,5 +1,7 @@
 namespace ZMachine.IO;
 
+using ZMachine.Core;
+
 /// <summary>
 /// Console-based IScreen implementation using ANSI escape codes.
 /// Serves as the initial output backend before the Avalonia GUI is built

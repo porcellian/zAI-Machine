@@ -1,5 +1,7 @@
 namespace ZMachine.IO;
 
+using ZMachine.Core;
+
 /// <summary>
 /// File-based IInputStream that plays back pre-recorded commands.
 /// This is input stream 1 — the counterpart of output stream 4's

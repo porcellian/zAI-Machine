@@ -1,4 +1,4 @@
-namespace ZMachine.IO;
+namespace ZMachine.Core;
 
 /// <summary>
 /// Abstraction for Z-Machine screen output, covering text display, window
