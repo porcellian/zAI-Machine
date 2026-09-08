@@ -2423,3 +2423,83 @@ watch expressions — the programmatic layer that a future GUI debugger will dri
 - Watch expressions: global evaluates, local evaluates, memory evaluates,
   invalid sets error, updates on step, remove/clear, SP evaluates (7)
 - Multi-version: Czech V5 step into (1)
+
+---
+
+## Phase 9: Save/Restore (Quetzal)
+
+### Task 9.1 — IFF Container Format Reader/Writer
+
+**Date:** 2026-09-08
+
+**Objective:** Implement a general-purpose IFF (Interchange File Format)
+reader/writer that handles both Quetzal (IFZS) and Blorb (IFRS) containers,
+including nested FORM chunks, padding, duplicate chunk warnings, and
+unknown chunk preservation.
+
+**Design Decisions:**
+
+1. **Static reader/writer classes:** `IffReader` and `IffWriter` are static
+   utility classes — no instance state needed. Both accept either a `Stream`
+   or `byte[]` for convenience. The writer also has a `WriteToArray` shortcut.
+
+2. **IffForm as parsed result:** The reader returns an `IffForm` with the
+   form type, a flat list of chunks in file order, and any warnings. Helper
+   methods `GetChunk(type)` and `GetChunks(type)` make lookup easy. The
+   first-match semantics of `GetChunk` follow Quetzal S8.8.
+
+3. **IffChunk with optional inner form type:** Regular chunks have a `TypeId`
+   and `Data`. Nested FORM chunks (like AIFF inside Blorb) additionally have
+   an `InnerFormType`. The `Length` property accounts for the 4-byte inner
+   type when present. The `Data` for nested FORMs contains only the sub-chunk
+   data, not the inner type bytes — the reader strips it, the writer adds it.
+
+4. **Odd-length padding (Quetzal S8.4.1):** The reader skips the pad byte
+   after odd-length chunks. The writer emits a zero pad byte. Neither includes
+   the pad byte in the chunk length. The IFhd chunk's 13-byte length (Quetzal
+   S5.7) is the canonical test case for this.
+
+5. **Duplicate chunk handling (Quetzal S8.8):** When a chunk type appears
+   more than once and only one is expected, the reader keeps the first and
+   ignores later duplicates with a warning. ANNO chunks are the exception —
+   multiple are allowed per Quetzal S7.5.
+
+6. **Unknown chunk preservation (Quetzal S8.9):** The reader does not reject
+   unknown chunk types — they're stored in the chunk list like any other.
+   Consumers decide what to do with them.
+
+7. **Big-endian I/O:** Both reader and writer use explicit big-endian
+   encoding for the 4-byte length fields, avoiding any endianness assumptions
+   about the runtime platform.
+
+8. **Nested FORM detection:** When the reader encounters a chunk with type
+   ID "FORM", it reads the next 4 bytes as the inner form type and the
+   remaining bytes as data. This handles AIFF sounds in Blorb (chunk type
+   'FORM' with formtype 'AIFF') without special-casing the format.
+
+**Spec References:**
+- Quetzal S8 — IFF format basics (chunks, FORM, padding, duplicates)
+- Quetzal S8.4.1 — Odd-length padding byte
+- Quetzal S8.5 — FORM structure
+- Quetzal S8.8 — Duplicate chunk handling
+- Quetzal S8.9 — Unknown chunk skipping
+- Quetzal S5.7 — IFhd 13-byte odd length
+- Blorb "The IFF Format" — FORM and chunk layout
+- Blorb "AIFF Sounds" — Nested FORM with inner formtype
+
+**Test Coverage (30 tests):**
+- Reader basics: empty form, single chunk, multiple chunks in order,
+  empty chunk (4)
+- Padding: odd-length chunk, single-byte chunk (2)
+- Nested FORM: inner form type exposed, coexists with regular chunks (2)
+- Duplicates: first kept with warning, multiple ANNO all kept (2)
+- Unknown chunks: preserved without error (1)
+- Error handling: non-FORM throws, truncated header throws (2)
+- Text chunks: AUTH/ANNO/(c) decode (1)
+- IffForm helpers: GetChunk missing, GetChunks multiple (2)
+- Writer basics: empty form, single chunk, odd-length padding, nested
+  FORM, invalid type throws (5)
+- Round-trip: multiple chunks, IFhd 13-byte, nested FORM, large chunk (4)
+- Stream API: write+parse round-trip (1)
+- FORM types: IFZS (Quetzal), IFRS (Blorb) (2)
+- IffChunk properties: regular length, nested FORM length (2)
