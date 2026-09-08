@@ -2576,3 +2576,62 @@ unknown chunk preservation.
 - Chunk ordering: IFhd then CMem then Stks (1)
 - Multi-version: Czech V5 valid IFZS, V5 IFhd valid (2)
 - Round-trip: 3-move CMem decode matches, stream=array output (2)
+
+---
+
+### Task 9.3 — Quetzal Restore and Undo
+
+**Date:** 2026-09-08
+
+**Objective:** Read a Quetzal save file and reconstruct game state — validate
+IFhd, decode CMem/UMem to restore dynamic memory, reconstruct call stack
+from Stks, and set the PC.
+
+**Design Decisions:**
+
+1. **Static `QuetzalReader` class:** Mirrors `QuetzalWriter`. `Restore(Stream,
+   Interpreter)` and `Restore(byte[], Interpreter)` parse the IFF, validate,
+   and restore state in-place. Returns the saved PC.
+
+2. **IFhd validation (Quetzal S5.3):** Compares release ($02), serial ($12),
+   and checksum ($1C) against the loaded story's original bytes. Rejects
+   mismatches with `QuetzalException`. Checksum calculated from file bytes
+   if the story header has none (Quetzal S5.5).
+
+3. **CMem decode (Quetzal S3.2–S3.4):** First restores original dynamic
+   memory, then XOR-decompresses CMem data on top. Trailing zeros (S3.4)
+   leave the original intact — no extra handling needed.
+
+4. **CMem error handling (Quetzal S3.5):** Detects decoded data exceeding
+   dynamic memory and incomplete runs (zero without length byte).
+
+5. **Stks reconstruction (Quetzal S4):** Clears the existing call stack
+   via new `CallStack.Clear()`, then pushes frames bottom-up. The dummy
+   frame (S4.11) for non-V6 is the first frame with all fields zero except
+   eval stack count. Eval stack values stored oldest-first in file.
+
+6. **IntD tolerance (Quetzal S7.8):** Unknown chunks silently ignored.
+   Save files from other interpreters restore correctly.
+
+7. **QuetzalException:** Dedicated exception with clear messages for each
+   validation failure.
+
+**Spec References:**
+- Quetzal S3.2–S3.7 — CMem XOR+RLE decompression
+- Quetzal S3.4–S3.5 — Short data and error cases
+- Quetzal S4.3, S4.11 — Stack frame format and dummy frame
+- Quetzal S5.3 — IFhd validation
+- Quetzal S7.8–S7.17 — IntD chunks tolerated
+
+**Test Coverage (22 tests):**
+- Save/restore round-trip: PC, dynamic memory, call stack, globals,
+  save-modify-restore (5)
+- CMem round-trip: 3-move compressed (1)
+- UMem round-trip: uncompressed memory (1)
+- Multi-version: Czech V5 (1)
+- IFhd validation: wrong release/serial/checksum, missing IFhd/memory/Stks,
+  wrong FORM type (7)
+- CMem/UMem errors: incomplete run, wrong length (2)
+- IntD: present doesn't cause rejection (1)
+- Stks: locals, return PCs, dummy frame (3)
+- Stream API: restore from stream (1)
