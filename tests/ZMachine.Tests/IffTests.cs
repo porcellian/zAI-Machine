@@ -203,10 +203,11 @@ public class IffTests
 
     /// <summary>
     /// Verifies that duplicate non-ANNO chunks produce a warning
-    /// and only the first is kept.
+    /// but all are kept (consumers use GetChunk for first-match).
+    /// Blorb files legitimately have many chunks of the same type.
     /// </summary>
     [Fact]
-    public void Parse_DuplicateIFhd_FirstKeptWithWarning()
+    public void Parse_DuplicateIFhd_AllKeptWithWarning()
     {
         byte[] data1 = [0x01, 0x02, 0x03, 0x04];
         byte[] data2 = [0x05, 0x06, 0x07, 0x08];
@@ -215,8 +216,10 @@ public class IffTests
 
         var form = IffReader.Parse(formData);
 
-        Assert.Single(form.Chunks);
+        Assert.Equal(2, form.Chunks.Count);
         Assert.Equal(data1, form.Chunks[0].Data);
+        Assert.Equal(data2, form.Chunks[1].Data);
+        Assert.Equal(data1, form.GetChunk("IFhd")!.Data);
         Assert.Single(form.Warnings);
         Assert.Contains("Duplicate", form.Warnings[0]);
         Assert.Contains("IFhd", form.Warnings[0]);

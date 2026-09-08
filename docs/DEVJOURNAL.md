@@ -2635,3 +2635,84 @@ from Stks, and set the PC.
 - IntD: present doesn't cause rejection (1)
 - Stks: locals, return PCs, dummy frame (3)
 - Stream API: restore from stream (1)
+
+---
+
+## Phase 10: Blorb Resource Loading
+
+### Task 10.1 — Blorb File Parser and Resource Index
+
+**Date:** 2026-09-08
+
+**Objective:** Parse Blorb 2.0.4 resource files (IFF FORM 'IFRS'), read the
+resource index (RIdx), and provide indexed access to resources by usage and
+number.
+
+**Design Decisions:**
+
+1. **IffReader duplicate handling fix:** The IffReader from Task 9.1 was
+   designed for Quetzal and dropped duplicate chunks (keeping only the first).
+   Blorb files legitimately have many chunks of the same type (e.g., multiple
+   PNG or OGGV chunks for different resources). Changed IffReader to keep all
+   chunks while still generating warnings for duplicates. This is a strictly
+   additive change — QuetzalReader's `GetChunk()` already returns the first
+   match, so Quetzal behavior is preserved.
+
+2. **Offset-based resource resolution:** RIdx entries reference chunks by file
+   offset. Since IffReader doesn't track chunk positions, BlorbReader computes
+   offsets from the chunk sequence: starting at byte 12 (after FORM header),
+   advancing by 8 + Length + padding for each chunk. This avoids modifying the
+   IffReader API.
+
+3. **AIFF reconstruction:** AIFF sounds are nested FORMs (FORM/AIFF). Our
+   IffChunk stores the inner data without the FORM wrapper. `GetResource()`
+   reconstructs the full AIFF file (FORM + length + AIFF + data) so consumers
+   get a usable audio file.
+
+4. **Resource type resolution:** `GetResourceType()` returns the inner form
+   type for nested FORMs ("AIFF") and the chunk TypeId for regular chunks
+   ("PNG ", "JPEG", "ZCOD", etc.). This gives consumers the actual format
+   identifier regardless of IFF nesting.
+
+5. **BlorbReader as instance class:** Unlike the static QuetzalReader/Writer,
+   BlorbReader is an instance class that holds the parsed state. This makes
+   sense because the resource index is queried repeatedly during gameplay,
+   not used once for a save/restore operation.
+
+**Spec References:**
+- Blorb "Overall Structure" — FORM 'IFRS', RIdx must be first
+- Blorb "Contents of the Resource Index Chunk" — 4-byte count + 12-byte entries
+- Blorb "Picture Resource Chunks" — PNG, JPEG, Rect types
+- Blorb "Sound Resource Chunks" — AIFF (nested FORM), OGGV, MOD
+- Blorb "Data Resource Chunks" — TEXT, BINA chunk types
+- Blorb "Executable Resource Chunks" — ZCOD, GLUL, etc.
+- Blorb "The Color Palette Chunk" — direct color (1 byte) or RGB list (3n bytes)
+- Blorb "Deprecated Chunks" — SNam (UTF-16 BE) skipped gracefully
+
+**Files Created/Modified:**
+- `src/ZMachine.Core/BlorbReader.cs` — Main parser: Load, HasResource,
+  GetResource, GetResourceType, offset mapping, Plte parsing
+- `src/ZMachine.Core/BlorbTypes.cs` — BlorbUsage constants, BlorbPalette class
+- `src/ZMachine.Core/IffReader.cs` — Fixed duplicate handling: keep all chunks
+- `tests/ZMachine.Tests/BlorbTests.cs` — 38 tests
+- `tests/ZMachine.Tests/IffTests.cs` — Updated duplicate test
+
+**Test Coverage (38 tests):**
+- Basic loading: PNG, JPEG, Rect, multiple resources, multiple PNGs (5)
+- Sound resources: AIFF reconstruction, Ogg, MOD, mixed types (4)
+- Executable: ZCOD resource (1)
+- Data resources: TEXT, BINA (2)
+- Shared chunks: two entries pointing to same offset (1)
+- Color palette: direct 16-bit, direct 32-bit, RGB list, illegal length,
+  invalid direct value, no palette (6)
+- Deprecated/unknown chunks: SNam, unknown types, optional metadata (3)
+- Validation: wrong FORM type, missing RIdx, RIdx not first, empty form,
+  truncated RIdx, bad offset, duplicate entries (7)
+- HasResource/missing: false for missing, GetResource throws,
+  GetResourceType throws (3)
+- Stream API (1)
+- Form property (1)
+- Non-contiguous numbers (1)
+- Zero-entry RIdx (1)
+- Odd-length chunks with offset correctness (1)
+- BlorbUsage constants (1)

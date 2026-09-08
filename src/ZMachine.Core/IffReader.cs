@@ -62,15 +62,13 @@ public static class IffReader
 
             long dataStart = reader.BaseStream.Position;
 
-            // Quetzal S8.8 — duplicate chunk warning
+            // Quetzal S8.8 — warn on duplicate Quetzal-specific chunks.
+            // All chunks are kept; consumers use GetChunk() for first-match.
+            // Blorb files legitimately have many chunks of the same type.
             if (!IsDuplicateAllowed(chunkType) && !seenTypes.Add(chunkType))
             {
                 warnings.Add(
-                    $"Duplicate '{chunkType}' chunk at offset {chunkStart}; ignoring.");
-
-                // Skip the chunk data + padding
-                SkipChunkData(reader, chunkLength, endPos);
-                continue;
+                    $"Duplicate '{chunkType}' chunk at offset {chunkStart}.");
             }
 
             IffChunk chunk;
@@ -132,14 +130,4 @@ public static class IffReader
         return data;
     }
 
-    private static void SkipChunkData(BinaryReader reader, uint chunkLength, long endPos)
-    {
-        long skipTarget = reader.BaseStream.Position + chunkLength;
-        // Pad byte for odd length
-        if (chunkLength % 2 != 0)
-            skipTarget++;
-        if (skipTarget > endPos)
-            skipTarget = endPos;
-        reader.BaseStream.Position = skipTarget;
-    }
 }
