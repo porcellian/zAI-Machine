@@ -1,0 +1,9 @@
+# Zork I: Five-move exploration sequence.
+# Tests multi-turn gameplay, object manipulation, and movement.
+look
+open mailbox
+read leaflet
+go north
+inventory
+quit
+y

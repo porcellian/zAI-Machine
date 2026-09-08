@@ -1,0 +1,6 @@
+# Zork I: Open mailbox, read leaflet, basic exploration.
+# Expected: game boots, mailbox described, leaflet readable.
+open mailbox
+read leaflet
+quit
+y
