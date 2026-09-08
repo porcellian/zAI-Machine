@@ -25,6 +25,53 @@ public class BlorbReader
     /// </summary>
     public BlorbPalette? Palette { get; private set; }
 
+    /// <summary>
+    /// Resource release number from the 'RelN' chunk, or 0 if absent.
+    /// Blorb "The Release Number Chunk" — passed to @picture_data 0.
+    /// </summary>
+    public int ReleaseNumber { get; private set; }
+
+    /// <summary>
+    /// Frontispiece picture resource number from the 'Fspc' chunk, or -1 if absent.
+    /// Blorb "The Frontispiece Chunk".
+    /// </summary>
+    public int FrontispiecePicture { get; private set; } = -1;
+
+    /// <summary>
+    /// Game identifier data from the 'IFhd' chunk (13 bytes: release/serial/checksum/PC),
+    /// or null if absent. Blorb "The Game Identifier Chunk".
+    /// </summary>
+    public byte[]? GameIdentifier { get; private set; }
+
+    /// <summary>
+    /// Metadata XML from the 'IFmd' chunk, or null if absent.
+    /// Blorb "Metadata" — UTF-8 encoded XML.
+    /// </summary>
+    public string? MetadataXml { get; private set; }
+
+    /// <summary>
+    /// Author name from the 'AUTH' chunk, or null if absent.
+    /// </summary>
+    public string? Author { get; private set; }
+
+    /// <summary>
+    /// Copyright message from the '(c) ' chunk, or null if absent.
+    /// </summary>
+    public string? Copyright { get; private set; }
+
+    /// <summary>
+    /// Annotation texts from 'ANNO' chunks (may be empty).
+    /// </summary>
+    public IReadOnlyList<string> Annotations { get; private set; } = [];
+
+    /// <summary>
+    /// Resource descriptions from the 'RDes' chunk. Keyed by (usage, number).
+    /// Blorb "The Resource Description Chunk".
+    /// </summary>
+    public IReadOnlyDictionary<(string Usage, int Number), string> ResourceDescriptions
+        => _resourceDescriptions;
+    private readonly Dictionary<(string Usage, int Number), string> _resourceDescriptions = new();
+
     /// <summary>Warnings generated during parsing.</summary>
     public IReadOnlyList<string> Warnings => _warnings;
 
@@ -104,6 +151,7 @@ public class BlorbReader
         var offsetToChunk = BuildOffsetMap(form);
         reader.ParseRIdx(form.Chunks[0], offsetToChunk);
         reader.ParsePalette(form);
+        reader.ParseMetadata(form);
 
         return reader;
     }
@@ -214,6 +262,115 @@ public class BlorbReader
                 $"Plte chunk has illegal length {data.Length} " +
                 "(expected 1 or a positive multiple of 3).");
         }
+    }
+
+    /// <summary>
+    /// Parses optional metadata chunks: IFhd, RelN, Fspc, RDes, IFmd, AUTH, (c), ANNO.
+    /// </summary>
+    private void ParseMetadata(IffForm form)
+    {
+        // Blorb "The Game Identifier Chunk"
+        var ifhd = form.GetChunk("IFhd");
+        if (ifhd != null)
+            GameIdentifier = ifhd.Data;
+
+        // Blorb "The Release Number Chunk" — 2-byte big-endian value
+        var reln = form.GetChunk("RelN");
+        if (reln != null && reln.Data.Length >= 2)
+            ReleaseNumber = (reln.Data[0] << 8) | reln.Data[1];
+
+        // Blorb "The Frontispiece Chunk" — 4-byte picture number
+        var fspc = form.GetChunk("Fspc");
+        if (fspc != null && fspc.Data.Length >= 4)
+            FrontispiecePicture = ReadInt32BE(fspc.Data, 0);
+
+        // Blorb "Metadata" — UTF-8 XML
+        var ifmd = form.GetChunk("IFmd");
+        if (ifmd != null)
+            MetadataXml = System.Text.Encoding.UTF8.GetString(ifmd.Data);
+
+        // AUTH, (c), ANNO
+        var auth = form.GetChunk("AUTH");
+        if (auth != null)
+            Author = auth.GetText();
+
+        var copy = form.GetChunk("(c) ");
+        if (copy != null)
+            Copyright = copy.GetText();
+
+        var annos = form.GetChunks("ANNO").ToList();
+        if (annos.Count > 0)
+            Annotations = annos.Select(a => a.GetText()).ToList();
+
+        // Blorb "The Resource Description Chunk"
+        var rdes = form.GetChunk("RDes");
+        if (rdes != null)
+            ParseResourceDescriptions(rdes);
+    }
+
+    /// <summary>
+    /// Parses the 'RDes' chunk: count + variable-length entries.
+    /// Blorb "The Resource Description Chunk".
+    /// </summary>
+    private void ParseResourceDescriptions(IffChunk rdes)
+    {
+        byte[] data = rdes.Data;
+        if (data.Length < 4) return;
+
+        int count = ReadInt32BE(data, 0);
+        int offset = 4;
+
+        for (int i = 0; i < count; i++)
+        {
+            if (offset + 12 > data.Length) break;
+
+            string usage = System.Text.Encoding.ASCII.GetString(data, offset, 4);
+            int number = ReadInt32BE(data, offset + 4);
+            int textLen = ReadInt32BE(data, offset + 8);
+            offset += 12;
+
+            if (offset + textLen > data.Length) break;
+
+            string text = System.Text.Encoding.UTF8.GetString(data, offset, textLen);
+            offset += textLen;
+
+            _resourceDescriptions[(usage, number)] = text;
+        }
+    }
+
+    /// <summary>
+    /// Validates the Blorb's IFhd chunk against a loaded story's memory.
+    /// Compares release number, serial number, and checksum.
+    /// Blorb "The Game Identifier Chunk" — same format as Quetzal S5.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the IFhd does not match the loaded story.
+    /// </exception>
+    public void ValidateIFhd(Memory memory)
+    {
+        if (GameIdentifier == null || GameIdentifier.Length < 13)
+            return;
+
+        byte[] ifhd = GameIdentifier;
+
+        ushort release = (ushort)((ifhd[0] << 8) | ifhd[1]);
+        ushort expectedRelease = memory.ReadWord(0x02);
+        if (release != expectedRelease)
+            throw new InvalidOperationException(
+                $"Blorb IFhd release mismatch: Blorb has {release}, story has {expectedRelease}.");
+
+        for (int i = 0; i < 6; i++)
+        {
+            if (ifhd[2 + i] != memory.OriginalBytes[0x12 + i])
+                throw new InvalidOperationException(
+                    "Blorb IFhd serial number mismatch.");
+        }
+
+        ushort checksum = (ushort)((ifhd[8] << 8) | ifhd[9]);
+        ushort expectedChecksum = memory.ReadWord(0x1C);
+        if (expectedChecksum != 0 && checksum != expectedChecksum)
+            throw new InvalidOperationException(
+                $"Blorb IFhd checksum mismatch: Blorb has ${checksum:X4}, story has ${expectedChecksum:X4}.");
     }
 
     /// <summary>

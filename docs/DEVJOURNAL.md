@@ -2716,3 +2716,72 @@ number.
 - Zero-entry RIdx (1)
 - Odd-length chunks with offset correctness (1)
 - BlorbUsage constants (1)
+
+---
+
+### Task 10.2 — Story Loading from Blorb and Metadata
+
+**Date:** 2026-09-08
+
+**Objective:** Load Z-code executables from Blorb files, validate story/Blorb
+compatibility via IFhd, detect Blorb files by extension, and parse optional
+metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
+
+**Design Decisions:**
+
+1. **Extension-based auto-detection:** The existing `Interpreter.Load(string)`
+   method now detects `.blorb`, `.zblorb`, `.blb`, `.zlb` extensions and
+   routes to Blorb loading automatically. Non-Blorb extensions continue to
+   load as raw story files. This keeps the caller API simple — no need to
+   know whether a file is Blorb or raw.
+
+2. **Conflicting executable validation:** Three-way check per Blorb spec:
+   - Blorb has exec + standalone story → error (conflicting)
+   - Blorb has no exec + no standalone → error (nothing to run)
+   - Non-ZCOD exec type → error (only Z-code supported)
+   This is enforced in `LoadFromBlorb()` before any memory loading.
+
+3. **IFhd validation for resource-only Blorbs:** When a Blorb has no
+   executable (used as a resource pack with a standalone story), the IFhd
+   chunk is validated against the loaded story — same fields as Quetzal
+   (release, serial, checksum). This catches story/resource mismatches.
+
+4. **BlorbReader metadata properties:** Added parsed properties for all
+   optional chunks directly on BlorbReader: ReleaseNumber, FrontispiecePicture,
+   GameIdentifier, MetadataXml, Author, Copyright, Annotations, and
+   ResourceDescriptions. Absent metadata has sensible defaults (0, -1, null,
+   empty). This avoids a separate metadata class while keeping the data
+   accessible for UI display and @picture_data queries.
+
+5. **Interpreter.Blorb property:** The loaded BlorbReader is exposed via
+   `Interpreter.Blorb` (null when loading a raw story). This makes resources
+   available to later phases (picture/sound loading) without re-parsing.
+
+6. **RDes parsing:** Resource descriptions use variable-length entries with
+   UTF-8 text. Parsed into a dictionary keyed by (usage, number) for O(1)
+   lookup — useful for accessibility features (alt-text for images).
+
+**Spec References:**
+- Blorb "Executable Resource Chunks" — ZCOD extraction, conflicting exec rules
+- Blorb "The Game Identifier Chunk" — IFhd format (same as Quetzal S5)
+- Blorb "The Release Number Chunk" — 2-byte big-endian value
+- Blorb "The Frontispiece Chunk" — 4-byte picture resource number
+- Blorb "The Resource Description Chunk" — variable-length UTF-8 entries
+- Blorb "Metadata" — UTF-8 XML in IFmd chunk
+- Blorb "File Suffixes" — .blorb, .zblorb, .blb, .zlb
+
+**Files Created/Modified:**
+- `src/ZMachine.Core/BlorbReader.cs` — Added metadata parsing (RelN, Fspc,
+  IFhd, IFmd, AUTH, (c), ANNO, RDes), ValidateIFhd method
+- `src/ZMachine.Core/ZMachine.cs` — Added Blorb property, extension detection,
+  Load overloads for Blorb + standalone story, LoadFromBlorb core method
+- `tests/ZMachine.Tests/BlorbStoryLoadingTests.cs` — 22 tests
+
+**Test Coverage (22 tests):**
+- ZCOD extraction: identical to raw, Blorb property set, can execute (3)
+- Resource-only Blorb: standalone story + resource pack (1)
+- Conflicting exec: exec + standalone, no exec + no story, non-ZCOD exec (3)
+- IFhd validation: matching, mismatched release, mismatched serial (3)
+- Extension detection: .zblorb, .blorb, .zlb, .blb, .z3 raw (5)
+- Metadata: RelN, Fspc, IFmd XML, AUTH/(c)/ANNO, RDes, absent defaults (6)
+- Interpreter Blorb property: null for raw story (1)
