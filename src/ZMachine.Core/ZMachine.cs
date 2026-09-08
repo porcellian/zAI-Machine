@@ -31,6 +31,7 @@ public class Interpreter
     private IInputStream _inputStream = null!;
     private int _version;
     private bool _running;
+    private readonly List<string> _blorbWarnings = new();
 
     /// <summary>The loaded story file memory.</summary>
     public Memory Memory => _memory;
@@ -49,6 +50,13 @@ public class Interpreter
     /// Available after calling any Load overload that accepts a Blorb.
     /// </summary>
     public BlorbReader? Blorb { get; private set; }
+
+    /// <summary>
+    /// Warnings generated during header flag updates, such as when the game
+    /// requests graphics or sound but no Blorb resource file is loaded.
+    /// ZSpec11 "Header capabilities bits".
+    /// </summary>
+    public IReadOnlyList<string> BlorbWarnings => _blorbWarnings;
 
     /// <summary>
     /// Blorb file extensions recognized for auto-detection.
@@ -226,9 +234,71 @@ public class Interpreter
             _state.CallStack.PushFrame(new CallFrame(0, 0, false, 0, 0));
         }
 
+        UpdateHeaderFlags();
+
         // Mark the machine as ready to execute so both Run() (internal loop)
         // and external callers driving Step() directly see Running == true.
         _running = true;
+    }
+
+    /// <summary>
+    /// Sets or clears header capability flags based on Blorb resource availability.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec11 "Header capabilities bits" — Flags 1 advertises interpreter
+    /// capabilities; Flags 2 reflects current availability (clear if no
+    /// resources loaded). Also generates warnings when the game requests
+    /// sound/graphics but no Blorb is loaded.
+    /// </remarks>
+    private void UpdateHeaderFlags()
+    {
+        if (_version < 4) return;
+
+        bool hasPictures = Blorb != null && Blorb.PictureCount > 0;
+        bool hasSounds = Blorb != null && Blorb.SoundCount > 0;
+
+        // Flags 1 (byte $01) — interpreter-set capability bits
+        byte flags1 = _memory.ReadByte(0x01);
+
+        // V4+: bit 1 = picture display available
+        if (hasPictures)
+            flags1 |= 0x02;
+        else
+            flags1 = (byte)(flags1 & ~0x02);
+
+        // V4+: bit 5 = sound effects available
+        if (hasSounds)
+            flags1 |= 0x20;
+        else
+            flags1 = (byte)(flags1 & ~0x20);
+
+        _memory.WriteByte(0x01, flags1);
+
+        // Flags 2 high byte ($10) — game-set request bits
+        // ZSpec11: "clear if no resources loaded"
+        if (_version >= 5)
+        {
+            byte flags2High = _memory.ReadByte(0x10);
+            bool gameWantsPictures = (flags2High & 0x01) != 0;
+            bool gameWantsSound = (flags2High & 0x10) != 0;
+
+            if (!hasPictures && gameWantsPictures)
+                flags2High = (byte)(flags2High & ~0x01);
+            if (!hasSounds && gameWantsSound)
+                flags2High = (byte)(flags2High & ~0x10);
+
+            _memory.WriteByte(0x10, flags2High);
+
+            // ZSpec11: prompt for Blorb if game wants resources but none loaded
+            if (Blorb == null && (gameWantsPictures || gameWantsSound))
+            {
+                _blorbWarnings.Add(
+                    "Game requests " +
+                    (gameWantsPictures && gameWantsSound ? "pictures and sound" :
+                     gameWantsPictures ? "pictures" : "sound") +
+                    " but no Blorb resource file is loaded.");
+            }
+        }
     }
 
     /// <summary>

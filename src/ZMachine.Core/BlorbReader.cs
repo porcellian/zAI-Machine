@@ -72,6 +72,18 @@ public class BlorbReader
         => _resourceDescriptions;
     private readonly Dictionary<(string Usage, int Number), string> _resourceDescriptions = new();
 
+    /// <summary>
+    /// Number of 'Pict' resources in the index.
+    /// Used by the interpreter to set header graphics capability flags.
+    /// </summary>
+    public int PictureCount { get; private set; }
+
+    /// <summary>
+    /// Number of 'Snd ' resources in the index.
+    /// Used by the interpreter to set header sound capability flags.
+    /// </summary>
+    public int SoundCount { get; private set; }
+
     /// <summary>Warnings generated during parsing.</summary>
     public IReadOnlyList<string> Warnings => _warnings;
 
@@ -224,6 +236,9 @@ public class BlorbReader
             // Blorb "AIFF Sounds" — nested FORM uses inner form type
             _resourceTypes[key] = chunk.InnerFormType ?? chunk.TypeId;
         }
+
+        PictureCount = _resources.Keys.Count(k => k.Usage == BlorbUsage.Picture);
+        SoundCount = _resources.Keys.Count(k => k.Usage == BlorbUsage.Sound);
     }
 
     /// <summary>
