@@ -5,6 +5,10 @@
 
 # Copyrighted Infocom story files (not for redistribution)
 stories/zork1.z3
+stories/ballyhoo.z3
+stories/mind.z4
+stories/sherlock.z5
+stories/Journey/
 
 # dotenv files
 .env
