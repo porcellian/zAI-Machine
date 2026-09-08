@@ -2160,3 +2160,64 @@ Story files now span V3–V6 for comprehensive coverage:
   mismatch detection (3)
 
 ---
+
+### Task 8.2 — Object Tree Viewer
+
+**Date:** 2026-09-07
+
+**Objective:** Create a read-only viewer for the Z-Machine object hierarchy
+with tree traversal, detail extraction, search/filter, and plain-text export.
+
+**Design Decisions:**
+
+1. **Self-contained construction:** `ObjectTreeViewer` takes only a `Memory`
+   instance and internally creates its own `ObjectTable` and `TextDecoder`.
+   This avoids coupling the viewer to the `Interpreter` class and allows
+   standalone use from developer tools or test harnesses.
+
+2. **Object count derivation:** The Z-Machine spec doesn't store an explicit
+   object count. Used the standard technique: the first object's property
+   table pointer immediately follows the last object entry, so
+   `count = (propTable1 - entriesStart) / entrySize`. This worked correctly
+   for all test files (V3–V5).
+
+3. **Tree built from pointers:** `GetTree()` finds all root objects
+   (parent == 0) and recursively follows child/sibling pointers to build
+   `ObjectNode` trees. Each node carries its number, decoded short name,
+   and child list.
+
+4. **Detail extraction in one call:** `GetObjectDetail()` returns everything
+   about one object: tree pointers (with decoded parent/sibling/child names),
+   all set attributes, and all properties with their number, address, data
+   length, hex bytes, and word-interpreted values for 1–2 byte properties.
+
+5. **Property iteration via GetNextProperty:** Used the existing
+   `ObjectTable.GetNextProperty(obj, 0)` chain rather than manually scanning
+   property blocks, which keeps the viewer honest to the same parsing logic
+   the interpreter uses.
+
+6. **Search dual-mode:** Search accepts both name substrings
+   (case-insensitive) and exact object numbers. Numeric queries match the
+   object number directly, then also match any names containing that string.
+
+7. **Export format:** Plain text with two sections — indented tree view,
+   then full detail blocks. Intentionally simple for offline analysis rather
+   than a structured format, matching the task requirement.
+
+**Spec References:**
+- ZSpec S12 — Object table layout and tree structure
+- ZSpec S12.3 — Object entries: attributes, tree pointers, property pointer
+- ZSpec S12.4 — Property blocks, size bytes, descending order
+
+**Test Coverage (25 tests):**
+- Zork I tree: object count, West of House exists/has parent/is child of
+  parent, mailbox has properties and attributes (6)
+- Zork I tree building: has roots, roots have children, all objects in tree (3)
+- Zork I search: by number, case-insensitive, not-found (3)
+- Zork I detail: hex/interpreted values, descending property order (2)
+- Zork I export: contains known objects, includes detail sections (2)
+- Multi-version: Mind V4 named objects, Sherlock V5 tree, Czech V5
+  attribute range, Czech V5 object count (4)
+- Synthetic V3: parent/child, tree structure, search, export, attributes (5)
+
+---
