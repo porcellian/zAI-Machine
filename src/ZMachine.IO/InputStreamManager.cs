@@ -1,5 +1,7 @@
 namespace ZMachine.IO;
 
+using ZMachine.Core;
+
 /// <summary>
 /// Manages the Z-Machine input streams: stream 0 (keyboard) and
 /// stream 1 (file playback). Implements @input_stream switching and

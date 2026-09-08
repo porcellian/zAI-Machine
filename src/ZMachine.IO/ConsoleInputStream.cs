@@ -1,5 +1,7 @@
 namespace ZMachine.IO;
 
+using ZMachine.Core;
+
 /// <summary>
 /// Keyboard-based IInputStream implementation using Console.ReadKey.
 /// This is input stream 0 (the default keyboard input).

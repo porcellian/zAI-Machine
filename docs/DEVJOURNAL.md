@@ -1916,3 +1916,107 @@ execution loop can check this after any memory write to the header region.
 - Fixed-pitch: default false, set bit → true, clear bit → false (3)
 
 ---
+
+## Phase 7: Integration
+
+### Task 7.1 — Main Execution Loop and Opcode Dispatch
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Moved IScreen and IInputStream interfaces to Core.** These pure abstractions
+   had no dependencies — keeping them in IO forced the execution engine into a
+   higher layer. Moving them to Core follows the standard pattern where the
+   innermost layer owns the contracts and outer layers provide implementations.
+   Updated `using` directives in all IO implementors (ConsoleScreen,
+   ConsoleInputStream, FileInputStream, InputStreamManager, WindowManager).
+
+2. **Created `Interpreter` class** (`src/ZMachine.Core/ZMachine.cs`). Named
+   `Interpreter` instead of `ZMachine` to avoid collision with the root namespace
+   `ZMachine.Core` — C# resolves the type name before the namespace, causing
+   `using ZMachine.IO` to fail with "type name does not exist in type."
+
+3. **Implemented Load/Init/Run/Step cycle.** `Load()` accepts a story path (or
+   byte array for testing), an `IInputStream`, and an `IScreen`. `Init()` wires
+   all subsystems: Memory, MachineState, TextDecoder/Encoder, ObjectTable,
+   Dictionary, Tokenizer, ReadHandler, OutputStreamManager, and all six opcode
+   handler classes. Sets the initial PC from header $06 — byte address for V1-5,
+   packed routine address (via `Call()`) for V6.
+
+4. **Built dispatch tables for all five opcode forms** (Op2, Op1, Op0, VAR, EXT).
+   Each form has its own dispatch method with a switch on opcode number. Store
+   and branch bytes are decoded per-opcode before operand resolution, matching
+   the Z-Machine spec's instruction layout.
+
+5. **Wired all Phase 3-6 opcodes:**
+   - ArithmeticOps: je/jl/jg/jz/test, add/sub/mul/div/mod, and/or/not,
+     log_shift/art_shift, random
+   - VariableMemoryOps: load/store/inc/dec/inc_chk/dec_chk, push/pull,
+     loadw/loadb/storew/storeb, scan_table/copy_table
+   - ObjectOps: get_parent/child/sibling, jin, insert_obj/remove_obj,
+     get/put/next_prop, get_prop_addr/len, test/set/clear_attr, print_obj
+   - TextOutputOps: print/print_ret (inline text), print_addr/paddr/char/num,
+     new_line, print_table/unicode, encode_text
+   - ControlFlowOps: call variants (call_vs/vn/2s/2n/1s/1n/vs2/vn2),
+     ret/rtrue/rfalse/ret_popped, jump, catch/throw, verify, piracy, restart,
+     quit, nop, check_arg_count
+   - ScreenStyleOps: set_text_style, set_font, set_colour, get_cursor,
+     erase_line, buffer_mode, check_unicode, save_undo/restore_undo
+
+6. **Handled version-dependent opcode semantics:**
+   - 1OP:15 is @not in V1-4 (store) vs @call_1n in V5+ (no store)
+   - 0OP:9 is @pop in V1-4 vs @catch in V5+ (store)
+   - 0OP:5/6 are @save/@restore with branch (V1-3) or store (V4) or EXT (V5+)
+   - VAR:4 @read stores terminating char in V5+ only
+
+7. **Implemented helper methods:**
+   - `InvokeCall()`: unpacks routine address, passes args, handles address 0
+     (store 0 + advance), delegates to ControlFlowOps.Call()
+   - `ExecuteRead()`: shows status line (V1-3), reads input, processes text
+     and parse buffers via ReadHandler
+   - `ExecuteTokenise()`: V5+ @tokenise with optional custom dictionary
+
+8. **Created integration tests** against zork1.z3:
+   - Boot and first moves: verifies opening text mentions ZORK and West of House
+   - Quit stops the machine
+   - Five moves: look, open mailbox, read leaflet, go north, inventory
+
+#### Design Decisions
+
+- **Interface placement**: Interfaces in Core, implementations in IO. This is
+  the Dependency Inversion Principle applied to the project structure — Core
+  defines what it needs, IO provides it.
+
+- **Class naming**: `Interpreter` instead of `ZMachine`. The namespace collision
+  is a permanent problem (any file with `using ZMachine.Core` would shadow the
+  namespace), and renaming avoids global:: workarounds everywhere.
+
+- **Inline store/branch decoding**: Rather than pre-computing which opcodes need
+  store/branch (which would require a lookup table or attributes), each dispatch
+  method decodes store/branch in the first switch before resolving operands. This
+  keeps the knowledge local to each opcode and matches the spec's instruction
+  layout where store/branch follow operands.
+
+- **No abstract dispatch table**: Could have used a `Dictionary<(OpcodeForm, int),
+  Action<Instruction>>` but the switch-based approach is faster (no allocation,
+  no delegate dispatch), easier to debug (stack traces show the exact case), and
+  makes version-dependent behavior natural with inline `if (_version >= 5)`.
+
+#### Spec Interpretation Notes
+
+- **@print/@print_ret inline text**: The text starts at `inst.NextAddress` (after
+  the opcode byte). The text decoder returns the byte length consumed. PC advances
+  past the text, then for @print_ret, @rtrue is executed.
+
+- **Indirect variable references**: dec_chk, inc_chk, store, inc, dec, load, pull
+  use the raw operand value as a variable number (not the resolved value). This
+  is why they read `(byte)inst.Operands[0]` instead of `ops[0]`.
+
+### Test Coverage (3 integration tests)
+
+- Zork I boot and first moves: opening text, look response (1)
+- Quit stops machine (1)
+- Five-move playthrough without crash (1)
+
+---
