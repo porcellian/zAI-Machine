@@ -35,8 +35,10 @@ public class ScriptedInputStream : IInputStream
         return new ScriptedInputStream(lines);
     }
 
+    /// <inheritdoc />
     public bool HasMore => _lines.Count > 0;
 
+    /// <inheritdoc />
     public (string Text, int TerminatingChar) ReadLine(int maxLength, int timeoutTenths = 0)
     {
         if (_lines.Count == 0)
@@ -49,6 +51,7 @@ public class ScriptedInputStream : IInputStream
         return (line, 13);
     }
 
+    /// <inheritdoc />
     public int ReadChar(int timeoutTenths = 0)
     {
         if (_lines.Count == 0)
