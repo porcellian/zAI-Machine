@@ -113,6 +113,10 @@ public class Interpreter
             _state.PC = _memory.ReadWord(0x06);
             _state.CallStack.PushFrame(new CallFrame(0, 0, false, 0, 0));
         }
+
+        // Mark the machine as ready to execute so both Run() (internal loop)
+        // and external callers driving Step() directly see Running == true.
+        _running = true;
     }
 
     /// <summary>
