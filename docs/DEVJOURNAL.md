@@ -2503,3 +2503,76 @@ unknown chunk preservation.
 - Stream API: write+parse round-trip (1)
 - FORM types: IFZS (Quetzal), IFRS (Blorb) (2)
 - IffChunk properties: regular length, nested FORM length (2)
+
+---
+
+### Task 9.2 — Quetzal Save Implementation
+
+**Date:** 2026-09-08
+
+**Objective:** Write Z-Machine state to a Quetzal 1.4 save file (IFF FORM
+'IFZS') with IFhd, CMem/UMem, and Stks chunks.
+
+**Design Decisions:**
+
+1. **Static `QuetzalWriter` class:** Like `IffWriter`, no instance state is
+   needed. `Save(Stream, Interpreter, savePC)` and `SaveToArray` convenience
+   method. The `savePC` parameter is passed explicitly because its value
+   depends on version-specific semantics (Quetzal S5.8) that the interpreter's
+   opcode dispatcher determines.
+
+2. **IFhd chunk (Quetzal S5.4):** 13 bytes: 2-byte release ($02), 6-byte
+   serial ($12), 2-byte checksum ($1C), 3-byte PC. Always first chunk.
+   If the story has no checksum (old games), it's calculated from story bytes
+   starting at $40 (Quetzal S5.5).
+
+3. **CMem compression (Quetzal S3.2–S3.7):** XOR current dynamic memory with
+   original, then run-length encode zeros. A zero byte followed by a count
+   byte represents count+1 zeros. Non-zero bytes pass through verbatim.
+   Trailing zeros are omitted (Quetzal S3.4). For zork1.z3 after a few moves,
+   CMem is typically under 200 bytes vs 9780 bytes of dynamic memory.
+
+4. **UMem fallback (Quetzal S3.8):** Raw dump of dynamic memory, controlled
+   by `useCompression` parameter. Quetzal says ability to write UMem is
+   optional but reading both is required (Task 9.3 will handle reading).
+
+5. **Stks chunk (Quetzal S4):** Frames written oldest-first via
+   `GetFramesBottomUp()`. Each frame: 3-byte return PC, flags byte (p=discard,
+   vvvv=local count), store variable, argument flags (bit per arg), eval stack
+   count word, local values, eval stack values (oldest first).
+
+6. **Dummy frame for non-V6 (Quetzal S4.11):** V1-5 and V7-8 execution starts
+   at an address, not a routine. The bottom frame is written as a dummy with
+   all fields zero except eval stack count. The dummy frame is mandatory even
+   if the eval stack is empty at the top level.
+
+7. **Eval stack ordering:** `Stack<ushort>.ToArray()` returns top-first, but
+   Quetzal S4.7 stores eval stack oldest-first. The writer reverses the array
+   when writing.
+
+8. **Big-endian consistency:** All multi-byte values are written big-endian
+   to match IFF and Z-Machine conventions.
+
+**Spec References:**
+- Quetzal S2 — Overall IFZS structure
+- Quetzal S3.2–S3.7 — CMem XOR+RLE compression
+- Quetzal S3.8 — UMem uncompressed dump
+- Quetzal S4.3 — Stack frame format
+- Quetzal S4.11 — Dummy frame for non-V6
+- Quetzal S5.4 — IFhd chunk format (13 bytes)
+- Quetzal S5.5 — Checksum calculation for old games
+- Quetzal S5.7 — IFhd odd-length padding
+- Quetzal S5.8 — PC encoding: V1-3 branch data, V4+ store byte
+
+**Test Coverage (26 tests):**
+- Valid IFF: produces IFZS, starts with FORM, length correct (3)
+- IFhd: comes first, 13 bytes, release number, serial number, checksum,
+  PC, odd-length padded (7)
+- CMem: present with compression, smaller than dynamic, decodes correctly,
+  untouched memory minimal (4)
+- UMem: present when uncompressed, matches dynamic memory exactly (2)
+- Stks: present, non-empty, V3 dummy frame, frame count matches, second
+  frame return PC (5)
+- Chunk ordering: IFhd then CMem then Stks (1)
+- Multi-version: Czech V5 valid IFZS, V5 IFhd valid (2)
+- Round-trip: 3-move CMem decode matches, stream=array output (2)
