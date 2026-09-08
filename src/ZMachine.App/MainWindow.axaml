@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ZMachine.App"
+        x:Class="ZMachine.App.MainWindow"
+        Title="zAI-Machine"
+        Width="660" Height="420"
+        Background="Black"
+        CanResize="True">
+
+    <NativeMenu.Menu>
+        <NativeMenu>
+            <NativeMenu.Items>
+                <NativeMenuItem Header="File">
+                    <NativeMenu>
+                        <NativeMenuItem Header="Open Story..." Click="OnOpenStory" />
+                        <NativeMenuItem Header="Open Blorb..." Click="OnOpenBlorb" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="Quit" Click="OnQuit" />
+                    </NativeMenu>
+                </NativeMenuItem>
+                <NativeMenuItem Header="Tools">
+                    <NativeMenu>
+                        <NativeMenuItem Header="Story Info" IsEnabled="False" />
+                        <NativeMenuItem Header="Object Tree" IsEnabled="False" />
+                        <NativeMenuItem Header="Dictionary" IsEnabled="False" />
+                        <NativeMenuItem Header="Disassembly" IsEnabled="False" />
+                        <NativeMenuItem Header="Debugger" IsEnabled="False" />
+                    </NativeMenu>
+                </NativeMenuItem>
+                <NativeMenuItem Header="Options">
+                    <NativeMenu>
+                        <NativeMenuItem Header="CRT Effects" IsEnabled="False" />
+                        <NativeMenuItem Header="Sound Volume" IsEnabled="False" />
+                    </NativeMenu>
+                </NativeMenuItem>
+                <NativeMenuItem Header="Help">
+                    <NativeMenu>
+                        <NativeMenuItem Header="About zAI-Machine" Click="OnAbout" />
+                    </NativeMenu>
+                </NativeMenuItem>
+            </NativeMenu.Items>
+        </NativeMenu>
+    </NativeMenu.Menu>
+
+    <Panel>
+        <local:SkiaCanvasControl x:Name="GameCanvas" />
+    </Panel>
+
+</Window>
