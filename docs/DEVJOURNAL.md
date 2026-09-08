@@ -2087,3 +2087,76 @@ execution loop can check this after any memory write to the header region.
   parsing, exhaustion, line count), CaptureScreen (output, status lines) (6)
 
 ---
+
+## Phase 8: Developer Tools
+
+### Task 8.1 — Story File Inspector
+
+**Date:** 2026-09-07
+
+**Objective:** Create a read-only inspector that extracts and formats story file
+metadata — header fields, memory map, header extension table, and interpreter
+capabilities — for debugging and developer tooling.
+
+**Design Decisions:**
+
+1. **Single class, four views:** `StoryInspector` provides `GetHeaderFields()`,
+   `GetHeaderExtension()`, `GetMemoryMap()`, and `GetInterpreterInfo()` — each
+   returning strongly typed records. This maps directly to the four planned
+   GUI panels without coupling to any presentation layer.
+
+2. **Records for output:** Used `HeaderField(Name, Address, Size, RawHex,
+   DecodedValue)` and `MemoryRegion(Name, Start, End)` records. Records give
+   value equality, immutability, and concise declarations — ideal for
+   read-only inspection data.
+
+3. **Version-gated field inclusion:** Rather than returning empty/null values
+   for fields that don't apply to a given version, the inspector omits them
+   entirely. A V3 story has no interpreter number/version or colour fields in
+   its output. This simplifies consumers — no need to check applicability.
+
+4. **Structure size estimation:** The memory map needs end addresses for
+   variable-length structures (abbreviation table, object table, dictionary).
+   Rather than requiring the full decoder infrastructure, used lightweight
+   estimators:
+   - Abbreviation table: 32 entries (V1-2) or 96 entries (V3+) × 2 bytes
+   - Object table: first object's property pointer reveals object count
+   - Dictionary: header encodes separator count, entry length, entry count
+
+5. **Checksum verification in two places:** Both `GetHeaderFields()` (raw
+   "verified"/"MISMATCH") and `GetInterpreterInfo()` ("PASS"/"FAIL") report
+   checksum status. Different context — one shows the raw field, the other
+   summarizes interpreter state.
+
+6. **True colour decoding (ZSpec11):** RGB 5-5-5 format with sentinels
+   $FFFE (default) and $FFFF (current). Extracted as R/G/B components.
+
+**Spec References:**
+- ZSpec S11 — Header layout ($00–$3F)
+- ZSpec S11.1 — Flags 1 (V1-3 vs V4+ interpretation)
+- ZSpec S11.1.2 — Flags 2 (game-requested features)
+- ZSpec11 "Header Extension" — Extension table and words 1–6
+- ZSpec11 "True Colours" — RGB 5-5-5 encoding with sentinels
+
+**Multi-Version Testing:**
+Story files now span V3–V6 for comprehensive coverage:
+- V3: zork1.z3, ballyhoo.z3, minizork.z3
+- V4: mind.z4
+- V5: sherlock.z5, czech.z5
+- V6: Journey/STORY.DATA.z6
+
+**Test Coverage (26 tests):**
+- Zork I V3: version, flags, checksum, serial, table addresses, no
+  interpreter fields, file length (7)
+- Czech V5: version, colours, alphabet field, header extension (4)
+- Mind V4: interpreter number/version, screen size (1)
+- Sherlock V5: standard revision (1)
+- Journey V6: routine/string offsets, packed initial PC (2)
+- Memory map: all regions, header 64 bytes, sort order, dynamic/static
+  boundary, globals 480 bytes (5)
+- Header extension: V3 empty, V5 conditional (2)
+- Interpreter info: essential fields, checksum PASS (2)
+- Synthetic memory: V5 full decode, Flags 3 transparency, checksum
+  mismatch detection (3)
+
+---
