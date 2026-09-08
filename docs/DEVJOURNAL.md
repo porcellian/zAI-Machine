@@ -2020,3 +2020,70 @@ execution loop can check this after any memory write to the header region.
 - Five-move playthrough without crash (1)
 
 ---
+
+### Task 7.2 — Regression Test Harness
+
+**Date**: 2026-09-07
+
+#### Steps Taken
+
+1. **Created reusable test infrastructure** in `tests/ZMachine.Tests/Harness/`:
+   - `ScriptedInputStream` — feeds commands from a list or file. Supports
+     comment lines (`#`) and blank-line skipping for script files. Tracks
+     lines consumed. Auto-returns "quit" when exhausted to prevent hangs.
+   - `CaptureScreen` — captures all printed text and status lines separately.
+     Implements full IScreen with no-op stubs for window/cursor operations.
+   - `TestHarness` — orchestrator with static `Run()`, `RunScript()`, and
+     `RunBytes()` factory methods. Enforces a configurable instruction limit
+     (default 10M) to prevent infinite loops in tests. Exposes captured
+     output, input stats, and interpreter state after the run.
+
+2. **Created test scripts** in `tests/scripts/`:
+   - `zork1_mailbox.txt` — open mailbox, read leaflet, quit
+   - `zork1_exploration.txt` — five-move sequence through the opening area
+   - `czech_conformance.txt` — starts the Czech conformance test suite
+
+3. **Wrote 16 regression tests** covering:
+   - Zork I (V3): boot text, open mailbox, read leaflet, inventory, go north,
+     script-file-driven mailbox and exploration sequences, instruction count
+     sanity check
+   - Minizork (V3): boot verification
+   - Czech (V5): boot and header text verification
+   - Harness infrastructure: instruction limit abort, ScriptedInputStream
+     file parsing, command exhaustion, line counting, CaptureScreen output
+     and status line capture
+
+4. **Refactored ZMachineIntegrationTests** to use the public harness classes
+   instead of private inner classes, eliminating code duplication.
+
+#### Design Decisions
+
+- **Static factory methods on TestHarness**: `Run()`, `RunScript()`, `RunBytes()`
+  rather than a constructor+method chain. Each call is a complete test run —
+  no mutable setup state to misuse. The harness itself is write-once-read-many
+  after the run completes.
+
+- **Instruction limit as safety net**: 10M default is generous enough for any
+  reasonable game interaction but catches infinite loops in under a second.
+  Tests can override for specific scenarios (e.g., the 100-instruction abort
+  test).
+
+- **Script file format**: One command per line, `#` for comments, blank lines
+  skipped. Simple enough to edit by hand, no parser complexity.
+
+- **Separate status line capture**: Status lines go to their own list rather
+  than mixing into the main output. This lets tests assert on status content
+  without parsing it out of the middle of game text.
+
+### Test Coverage (16 regression tests)
+
+- Zork I boot: opening text, ZORK mention (1)
+- Zork I commands: open mailbox, read leaflet, inventory, go north (4)
+- Zork I script files: mailbox sequence, exploration sequence (2)
+- Zork I metrics: instruction count sanity (1)
+- Minizork: boot verification (1)
+- Czech V5: boot and header text (1)
+- Harness infrastructure: instruction limit, ScriptedInputStream (file
+  parsing, exhaustion, line count), CaptureScreen (output, status lines) (6)
+
+---

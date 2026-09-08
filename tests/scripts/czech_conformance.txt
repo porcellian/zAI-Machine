@@ -1,0 +1,4 @@
+# Czech: Z-Machine conformance test suite (V5).
+# The test runs automatically after pressing any key.
+# We send a blank line to start, then let it run.
+
