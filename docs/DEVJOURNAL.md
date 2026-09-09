@@ -3180,3 +3180,57 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - Renderer Integration: initialization, white-on-blue draw, border color,
   GuiScreen 80×30, ZORK rendering (5)
 - Classic vs Modern: wider columns, chrome mode, brighter blue (3)
+
+### Task 11.5 — Apple II Theme
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Created `AppleIITheme`** (`src/ZMachine.IO/AppleIITheme.cs`) implementing
+   `ITheme` with authentic Apple II monochrome phosphor display:
+   - 40 columns × 24 rows, 7×8 character cells (280×192 logical pixels)
+   - 24-pixel border matching the phosphor background
+   - P1 green phosphor: foreground #33FF33, background #001100
+   - All Z-Machine colors 3–15 mapped to phosphor green — true monochrome
+   - Color 2 (black) maps to phosphor background for correct reverse video
+   - Apple II 7×8 BitmapFont from FontData
+   - Borderless chrome mode
+
+#### Design Decisions
+
+- **True monochrome palette.** Every Z-Machine color except black resolves to
+  phosphor green. This matches the original Apple II hardware which had no color
+  text mode — the P1 phosphor produced only green-on-dark. The only visual
+  distinction available is reverse video (swapping fg/bg), which the Z-Machine
+  status line uses.
+
+- **Color 2 maps to background, not green.** If black also mapped to green,
+  reverse video (which swaps fg/bg colors) would be invisible — both colors
+  would be green. Mapping black to the phosphor background color ensures
+  reverse-video works correctly.
+
+- **24-pixel border.** The Apple II had visible overscan borders on its display.
+  A 24-pixel border simulates this while keeping the overall frame proportional
+  to the 280×192 character area.
+
+- **40×24 (not 40×25).** The Apple II text mode was 40×24 lines, not 25. This
+  is one row fewer than the C64 and IBM PC, matching the original hardware.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: 40-column display, monochrome rendering.
+- ZSpec S8.2 — Status line: inverse video bar at top row.
+- ZSpec S8.3.1 — Colour table: all entries mapped to phosphor green.
+- ZSpec S8.7.1 — Reverse video: the only visual styling on monochrome display.
+
+**Test Coverage (22 tests):**
+- ITheme: implements interface, CreateConfig (2)
+- Screen Dimensions: 40×24, 7×8 cells, border, pixel dimensions (4)
+- Monochrome Palette: all colors green, black maps to background, default
+  fg/bg, border color, 14 entries (6)
+- Font: Apple II 7×8 BitmapFont (1)
+- Chrome and Effects: borderless, no post-processing (2)
+- Renderer Integration: initialization, only green pixels, all colors render
+  green, reverse video swaps, status line reverse green, border dark green,
+  GuiScreen 40×24, ZORK green text (7)
