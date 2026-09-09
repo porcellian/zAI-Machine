@@ -1289,7 +1289,7 @@ green phosphor and the amber phosphor variant.
 
 ---
 
-### 11.7 — DOS CGA Color Theme
+### 11.7 — DOS CGA Color Theme ✅
 
 IBM PC CGA/EGA 16-color text mode — the classic DOS gaming look.
 

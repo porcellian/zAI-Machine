@@ -3287,3 +3287,62 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - Green Renderer: init, only-green pixels, ZORK green, GuiScreen 80×25 (4)
 - Amber Renderer: init, only-amber pixels, ZORK amber, GuiScreen 80×25 (4)
 - Shared Base: same dimensions/font, different colors (2)
+
+---
+
+### Task 11.7 — DOS CGA Color Theme
+
+**Date:** 2026-09-08
+
+#### What Was Done
+
+Implemented `DosColorTheme` — an IBM PC CGA/EGA 16-color text mode theme
+matching the classic DOS gaming aesthetic. The theme provides:
+
+- **80×25 character grid** with EGA 8×14 font, matching standard DOS text mode
+- **Full CGA palette** mapped to Z-Machine colors 2–15 using authentic CGA
+  hardware color values (0x00, 0x55, 0xAA, 0xFF per channel)
+- **Default DOS colors**: light grey (CGA 7) on black for the lower window
+- **Status line support**: white (CGA 15) on blue (CGA 1) available via the
+  palette for the classic DOS adventure game status bar
+
+#### Design Decisions
+
+- **CGA Yellow vs Brown for Z-Machine "Yellow" (color 5).** CGA has both
+  Brown (CGA 6, #AA5500) and Yellow (CGA 14, #FFFF55). Since the Z-Machine
+  calls color 5 "Yellow", we map it to CGA bright yellow (#FFFF55). CGA Brown
+  (#AA5500) maps to Z-Machine 13 ("Orange") instead — it's the closest warm
+  color in the CGA palette.
+
+- **14 palette slots for 16 CGA colors.** Z-Machine colors 2–15 give us 14
+  slots but CGA has 16 colors. The mapping prioritizes semantic correctness
+  (Z-Machine color names match CGA equivalents) and uses the reserved slots
+  (14, 15) for Light Magenta and Light Cyan. CGA colors Light Blue (#5555FF),
+  Light Green (#55FF55), and Light Red (#FF5555) are omitted — they're rarely
+  used in Z-Machine games and the semantic slots are more important.
+
+- **Two grey slots (11, 12) both map to CGA Dark Grey (#555555).** CGA has
+  only two greys (Light Grey CGA 7, Dark Grey CGA 8), while Z-Machine defines
+  three (Light, Medium, Dark). Both medium and dark map to the single CGA
+  dark grey — there's no better CGA approximation.
+
+- **DefaultForeground = 10 (Light grey), not 9 (White).** Standard DOS text
+  mode uses CGA attribute 07h (Light Grey foreground), not 0Fh (White). White
+  was the "high intensity" variant. This matches what users remember from DOS.
+
+- **No post-processing effects.** CGA/EGA monitors were sharp digital displays
+  without the phosphor bloom or scanline artifacts of CRT-based themes.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: 80-column color display with 16-color palette.
+- ZSpec S8.3.1 — Colour table: Z-Machine colors 2–15 mapped to CGA values.
+
+**Test Coverage (35 tests):**
+- ITheme: implements, config (2)
+- Layout: 80×25, pixel dims, EGA font, border (4)
+- Palette: 14 entries, all 14 colors individually, CGA values, fully opaque (17)
+- Defaults: light grey fg, black bg, status line white/blue (3)
+- Chrome/Effects: borderless, black border, no post-processing (3)
+- Renderer: init, CGA colors, red-on-blue, GuiScreen 80×25 (4)
+- Comparison: same dims as monochrome, different palettes (2)
