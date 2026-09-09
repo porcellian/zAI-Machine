@@ -1312,7 +1312,7 @@ IBM PC CGA/EGA 16-color text mode — the classic DOS gaming look.
 
 ---
 
-### 11.8 — Amiga Theme
+### 11.8 — Amiga Theme ✅
 
 Amiga Workbench-inspired theme with decorative window chrome.
 

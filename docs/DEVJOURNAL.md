@@ -3346,3 +3346,64 @@ matching the classic DOS gaming aesthetic. The theme provides:
 - Chrome/Effects: borderless, black border, no post-processing (3)
 - Renderer: init, CGA colors, red-on-blue, GuiScreen 80×25 (4)
 - Comparison: same dims as monochrome, different palettes (2)
+
+---
+
+### Task 11.8 — Amiga Theme
+
+**Date:** 2026-09-08
+
+#### What Was Done
+
+Implemented `AmigaTheme` — an Amiga Workbench 1.x-inspired theme using the
+authoritative ZSpec11 gamma-adjusted Amiga V6 colour set. The theme provides:
+
+- **80×25 character grid** with Amiga Topaz 8×8 font
+- **ZSpec11 Amiga palette** for Z-Machine colours 2–12, derived from the
+  spec's 15-bit true colour values via (val << 3) | (val >> 2) expansion
+- **Workbench 1.x accents** for reserved colours 13–15 (orange, blue, grey)
+- **Standard chrome** mode with Workbench blue border for the Amiga frame feel
+- **16px border** giving room for the classic Workbench window aesthetic
+
+#### Design Decisions
+
+- **ZSpec11 true colour values as authoritative source.** The spec provides
+  15-bit true colour values (bits 14–10 blue, 9–5 green, 4–0 red) for the
+  Amiga V6 colour set. These were gamma-adjusted from original 8-bit Amiga
+  values using Z = 31 * [(Amiga / 15) ^ (1.8/2.2)]. I expand each 5-bit
+  channel to 8-bit via the standard method: (val << 3) | (val >> 2). The
+  tests verify both the conversion and the palette match.
+
+- **White on black default rather than white on blue.** While the Amiga
+  Workbench desktop was blue, Infocom's Amiga Z-Machine interpreter typically
+  used black backgrounds for game text. White on black is more universally
+  compatible across Z-Machine games.
+
+- **Workbench colours for reserved slots 13–15.** The ZSpec11 colour table
+  marks 13–14 as "reserved" and 15 as "transparent (V6)". Since the Amiga
+  theme has a distinct visual identity, the reserved slots carry Workbench 1.x
+  accent colours — orange (#FF8800), blue (#0055AA), and grey (#AAAAAA) —
+  giving V6 games access to the Amiga's signature colour scheme.
+
+- **ChromeMode.Standard** selected for the Amiga's decorative window style.
+  The Workbench had distinctive title bars with close/depth gadgets. The
+  actual Amiga chrome rendering is a renderer concern — the theme config
+  establishes Standard mode so the renderer knows to draw window chrome.
+
+#### Spec References
+
+- ZSpec11 "Colour numbers" — Amiga V6 colour set, gamma-adjusted.
+- ZSpec11 "Colour numbers" — Gamma formula: Z = 31 * [(A/15)^(1.8/2.2)].
+- ZSpec S8.3.1 — True colour encoding (15-bit, BGR 5-5-5).
+
+**Test Coverage (43 tests):**
+- ITheme: implements, config (2)
+- Layout: 80×25, pixel dims, Topaz font, border (4)
+- ZSpec11 Palette: 14 entries, 11 individual colours verified against spec,
+  all opaque, grey uniformity (15)
+- Workbench Accents: orange, blue, grey (3)
+- Defaults/Chrome: white fg, black bg, status line, standard chrome,
+  WB blue border, no post-processing (6)
+- Renderer: init, Amiga colours, GuiScreen 80×25 (3)
+- True Colour Verification: 11 Theory cases cross-checking 15-bit→8-bit
+  conversion against palette (11, included in total above)
