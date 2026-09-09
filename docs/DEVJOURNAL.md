@@ -3234,3 +3234,56 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - Renderer Integration: initialization, only green pixels, all colors render
   green, reverse video swaps, status line reverse green, border dark green,
   GuiScreen 40×24, ZORK green text (7)
+
+### Task 11.6 — DOS Monochrome Themes (Green Screen and Amber Screen)
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Created `DosMonochromeTheme` abstract base class**
+   (`src/ZMachine.IO/DosMonochromeTheme.cs`) — shared layout and font logic:
+   - 80 columns × 25 rows, EGA 8×14 font (MDA resolution proportions)
+   - 8-pixel border, borderless chrome mode
+   - Abstract properties for phosphor colors (normal, bright, background)
+   - `BuildMonochromePalette()` maps all Z-Machine colors to phosphor; white
+     (color 9) maps to bright/intensified phosphor for bold distinction
+
+2. **Created `DosGreenTheme`** — P1 green phosphor:
+   - Normal: #33FF33, Bright: #66FF66, Background: #0A1A0A
+
+3. **Created `DosAmberTheme`** — P3 amber phosphor:
+   - Normal: #FFB000, Bright: #FFD060, Background: #1A0F00
+
+#### Design Decisions
+
+- **Shared base class rather than composition.** Both themes are identical
+  except for color values. An abstract base with three color property overrides
+  is the cleanest factoring — no config objects, no builders, just subclass
+  and supply colors.
+
+- **White (color 9) maps to bright phosphor.** This gives the default
+  foreground text the intensified/bold appearance, matching how MDA monitors
+  rendered "normal intensity" vs "high intensity" text. Other colors map to
+  normal phosphor since monochrome displays can't distinguish them.
+
+- **EGA 8×14 font.** The IBM MDA used 9×14 characters, but the extra pixel
+  column was hardware-generated (duplicating column 8 for box-drawing chars).
+  The EGA 8×14 font is the closest standard representation.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: 80-column display, monochrome rendering.
+- ZSpec S8.3.1 — Colour table: all entries mapped to phosphor colors.
+- ZSpec S8.7.1 — Text styles: bold→bright, reverse→swap fg/bg.
+
+**Test Coverage (33 tests):**
+- ITheme: green implements, green config, amber implements, amber config (4)
+- Shared Layout: green 80×25, amber 80×25, pixel dims, green EGA font,
+  amber EGA font (5)
+- Green Palette: 14 entries, all green, black→bg, bright fg, border (5)
+- Amber Palette: 14 entries, all amber, black→bg, bright fg, border (5)
+- Chrome/Effects: green borderless, amber borderless, green no fx, amber no fx (4)
+- Green Renderer: init, only-green pixels, ZORK green, GuiScreen 80×25 (4)
+- Amber Renderer: init, only-amber pixels, ZORK amber, GuiScreen 80×25 (4)
+- Shared Base: same dimensions/font, different colors (2)
