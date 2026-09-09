@@ -59,6 +59,12 @@ public class ThemeConfig
     /// </summary>
     public ChromeMode Chrome { get; init; } = ChromeMode.Borderless;
 
+    /// <summary>
+    /// BitmapFont used for rendering. When set, overrides FontBitmap and
+    /// determines CharWidth/CharHeight for pixel rendering.
+    /// </summary>
+    public BitmapFont? Font { get; init; }
+
     /// <summary>Bitmap font data (1-bit-per-pixel), or null for built-in.</summary>
     public byte[]? FontBitmap { get; init; }
 

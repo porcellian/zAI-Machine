@@ -17,9 +17,9 @@ public class SkiaRenderer : IRenderer, IDisposable
     private SKCanvas? _canvas;
     private ThemeConfig _theme = new();
     private SKPaint _paint = new();
+    private BitmapFont? _font;
 
-    // Built-in 8x16 font as a fallback when no bitmap font is provided.
-    // Each glyph is 8 pixels wide × 16 pixels tall, 1 byte per row.
+    // Raw font fields used when no BitmapFont is provided
     private byte[]? _fontData;
     private int _fontFirstChar;
     private int _fontGlyphCount;
@@ -43,20 +43,31 @@ public class SkiaRenderer : IRenderer, IDisposable
         _backBuffer = new SKBitmap(widthPixels, heightPixels, SKColorType.Rgba8888, SKAlphaType.Premul);
         _canvas = new SKCanvas(_backBuffer);
 
-        _fontCharWidth = theme.CharWidth;
-        _fontCharHeight = theme.CharHeight;
-        _fontFirstChar = theme.FontFirstChar;
-        _fontGlyphCount = theme.FontGlyphCount;
-
-        if (theme.FontBitmap != null)
+        // Prefer BitmapFont object; fall back to raw byte[] or BuiltInFont
+        if (theme.Font != null)
         {
-            _fontData = theme.FontBitmap;
+            _font = theme.Font;
+            _fontCharWidth = _font.CharWidth;
+            _fontCharHeight = _font.CharHeight;
         }
         else
         {
-            _fontData = BuiltInFont.Data;
-            _fontFirstChar = BuiltInFont.FirstChar;
-            _fontGlyphCount = BuiltInFont.GlyphCount;
+            _font = null;
+            _fontCharWidth = theme.CharWidth;
+            _fontCharHeight = theme.CharHeight;
+            _fontFirstChar = theme.FontFirstChar;
+            _fontGlyphCount = theme.FontGlyphCount;
+
+            if (theme.FontBitmap != null)
+            {
+                _fontData = theme.FontBitmap;
+            }
+            else
+            {
+                _fontData = BuiltInFont.Data;
+                _fontFirstChar = BuiltInFont.FirstChar;
+                _fontGlyphCount = BuiltInFont.GlyphCount;
+            }
         }
 
         // Clear to border color
@@ -71,10 +82,19 @@ public class SkiaRenderer : IRenderer, IDisposable
 
     public void DrawCharacter(int col, int row, char c, SKColor fg, SKColor bg, int style)
     {
-        if (_canvas == null || _fontData == null) return;
+        if (_canvas == null) return;
 
         int x = _theme.BorderWidth + col * _fontCharWidth;
         int y = _theme.BorderWidth + row * _fontCharHeight;
+
+        // Delegate to BitmapFont when available
+        if (_font != null)
+        {
+            _font.RenderGlyph(_canvas, _backBuffer!, c, x, y, fg, bg, style);
+            return;
+        }
+
+        if (_fontData == null) return;
 
         var actualFg = fg;
         var actualBg = bg;

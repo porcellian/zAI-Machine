@@ -2955,3 +2955,94 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - GuiScreen: screen size, print draws, split/set window, erase window -1,
   set text style, status line, buffer mode flush (7)
 - GuiInputStream: line input, char input, line timeout, char timeout, truncation (5)
+
+### Task 11.2 — Bitmap Font System
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Created the `BitmapFont` class** (`src/ZMachine.IO/BitmapFont.cs`) as the
+   unified API for bitmap font rendering. The class wraps raw 1-bit-per-pixel
+   glyph data and provides:
+   - `GetGlyph(char)` — returns row bytes for a character
+   - `RenderGlyph(...)` — draws directly to an SKBitmap with style support
+     (reverse, bold, italic)
+   - `ResolveGlyphIndex(char)` — maps ZSCII 155–251 extra characters to
+     unaccented ASCII equivalents via a configurable mapping table
+   - `CreateBuiltIn()` factory — wraps the existing BuiltInFont VGA 8×16 data
+
+2. **Created vintage font data sets** (`src/ZMachine.IO/FontData.cs`) with six
+   platform-specific bitmap fonts:
+   - **C64 8×8** — Commodore 64 uppercase PETSCII style, rounded forms
+   - **Apple II 7×8** — 7-pixel-wide character generator (fits 40/80 column
+     modes depending on pixel doubling)
+   - **CGA 8×8** — IBM PC CGA character ROM
+   - **EGA 8×14** — IBM PC EGA with taller glyphs for improved readability
+   - **VGA 8×16** — delegates to existing BuiltInFont data
+   - **Amiga Topaz 8×8** — Amiga Workbench Topaz-style, wider strokes
+
+   Each font covers all 95 printable ASCII characters (32–126) with
+   hand-crafted glyph bitmaps faithful to the original platform aesthetics.
+
+3. **Added `Font` property to ThemeConfig** — new `BitmapFont?` property that,
+   when set, overrides the raw `FontBitmap`/`FontFirstChar`/`FontGlyphCount`
+   fields. This provides a clean migration path: existing code using raw byte
+   arrays continues to work, while new theme definitions use BitmapFont.
+
+4. **Refactored SkiaRenderer** to detect and use `BitmapFont` when the theme's
+   `Font` property is set. `DrawCharacter()` delegates to
+   `BitmapFont.RenderGlyph()` for the full rendering pipeline (background fill,
+   glyph pixels, bold shift, italic shift, reverse swap). Falls back to the
+   existing raw byte array code path when no BitmapFont is provided.
+
+5. **ZSCII extra character mapping** — `BuildDefaultZsciiMap()` maps ZSCII
+   codes 155–251 (accented Latin characters per ZSpec S3.8.5) to their closest
+   unaccented ASCII equivalents. This allows bitmap fonts that only contain
+   ASCII 32–126 to still display accented text legibly. The mapping is
+   configurable per-font via the constructor's `zsciiMap` parameter.
+
+#### Design Decisions
+
+- **BitmapFont wraps raw data rather than replacing it.** The existing
+  `BuiltInFont` static class and the raw `FontBitmap` byte arrays in
+  ThemeConfig continue to work. BitmapFont is additive — it provides a richer
+  API (ZSCII mapping, named access, style rendering) without breaking existing
+  code paths. This was chosen over a flag-day refactor to keep the test suite
+  green throughout development.
+
+- **Font data is procedurally defined, not loaded from ROM files.** Using
+  embedded byte arrays means no external file dependencies and no copyright
+  concerns with actual ROM dumps. The glyph patterns are hand-crafted to match
+  the visual style of each platform's original character set.
+
+- **Apple II uses 7-pixel width.** The original Apple II character generator
+  produces 7-pixel-wide characters. Rather than padding to 8 pixels, we
+  preserve the authentic width. ThemeConfig's `CharWidth` property must be set
+  to 7 when using this font, which affects `PixelWidth` calculations
+  throughout the rendering pipeline.
+
+- **CGA shares C64 data.** At 8×8 resolution, the IBM PC CGA and C64 character
+  ROMs are nearly identical. Rather than duplicating 760 bytes of data with
+  minor cosmetic differences, CGA reuses the C64 glyph data. If platform
+  purists need differentiation, individual glyphs can be overridden later.
+
+#### Spec References
+
+- ZSpec S3.8.5 — Default ZSCII extra characters (155–251): accented Latin
+  characters mapped to Unicode code points, here approximated to ASCII.
+- ZSpec S8 — Screen model: fixed-width character cells, all text rendered
+  through the font system.
+- ZSpec S8.7.1 — Text styles: reverse video (swap fg/bg), bold (shifted
+  overdraw), italic (top-half shift).
+
+**Test Coverage (30 tests):**
+- BitmapFont Core API: dimensions, glyph length, space blank, letter A pixels,
+  out-of-range fallback, ZSCII 155→'a', ZSCII 159→'O' (7)
+- FontData Vintage Fonts: C64 dimensions/pixels, Apple II dimensions/pixels,
+  CGA dimensions, EGA dimensions/pixels, VGA matches BuiltIn, Amiga
+  dimensions/pixels, GetAll count, all spaces blank, all printable ASCII (13)
+- ZORK Rendering: VGA/C64/Apple II/EGA pixel dimensions (4)
+- SkiaRenderer Integration: BitmapFont draw, reverse style, fallback to
+  BuiltIn, Apple II dimensions (4)
+- RenderGlyph Styles: bold shifts pixels, italic differs from normal (2)
