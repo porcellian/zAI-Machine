@@ -3046,3 +3046,83 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - SkiaRenderer Integration: BitmapFont draw, reverse style, fallback to
   BuiltIn, Apple II dimensions (4)
 - RenderGlyph Styles: bold shifts pixels, italic differs from normal (2)
+
+### Task 11.3 — C64 Classic Theme
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Created the `ITheme` interface** (`src/ZMachine.IO/ITheme.cs`) — a simple
+   contract requiring `Name` and `CreateConfig()`. Each vintage theme implements
+   this interface to provide its platform-specific ThemeConfig.
+
+2. **Created `C64Theme`** (`src/ZMachine.IO/C64Theme.cs`) implementing `ITheme`
+   with authentic Commodore 64 display parameters:
+   - 40 columns × 25 rows, 8×8 character cells (320×200 logical pixels)
+   - 32-pixel border (matching PAL overscan proportions)
+   - VIC-II 16-color palette mapped to Z-Machine colors 2–15
+   - Default foreground: light blue (#7869C4, C64 color 14)
+   - Default background and border: medium blue (#40318D, C64 color 6)
+   - Uses the C64 8×8 BitmapFont from FontData
+   - Borderless chrome mode for full-screen retro feel
+
+3. **Added cursor blinking** to SkiaRenderer via `DrawCursor()`:
+   - Block cursor drawn as a filled rectangle at the current cursor position
+   - ~1 Hz toggle (500ms interval) using `Environment.TickCount64`
+   - `SetCursorPosition()` resets the blink timer so the cursor is immediately
+     visible when the position changes
+
+4. **Added post-processing effects** to SkiaRenderer (all toggleable via
+   ThemeConfig flags):
+   - `ApplyScanlines()` — darkens every other pixel row by ~30%
+   - `ApplyCrtCurvature()` — barrel distortion warping pixels outward from
+     center, with configurable strength parameter
+   - `ApplyPhosphorBloom()` — brightens pixels adjacent to bright areas,
+     simulating CRT phosphor bleed
+
+5. **Added `PhosphorBloom` property** to ThemeConfig alongside existing
+   `Scanlines` and `CrtCurvature` flags.
+
+#### Design Decisions
+
+- **VIC-II palette sourced from VICE emulator PAL values.** The C64 didn't have
+  a standardized RGB palette — it output composite video. Different capture
+  methods produce different RGB approximations. The VICE PAL palette is the most
+  widely recognized reference and matches the visual expectations of C64 users.
+
+- **32-pixel border.** The original C64 PAL display had visible overscan borders.
+  The 32-pixel border creates the characteristic "framed" look where the text area
+  floats within a colored border, matching the reference screenshot.
+
+- **Post-processing effects are per-pixel, not shader-based.** SkiaSharp doesn't
+  expose GPU shader programs in the way needed for real-time CRT emulation. The
+  per-pixel approach works well for the 320×200 logical resolution of the C64
+  theme (only 64,000 pixels per frame). For higher-resolution themes, the effects
+  may need optimization or could be applied at a lower resolution.
+
+- **Cursor blink uses `Environment.TickCount64` rather than a timer thread.**
+  The blink state is evaluated lazily when `DrawCursor()` is called, avoiding
+  the need for a separate timer and cross-thread synchronization. The cursor
+  appears immediately after `SetCursorPosition()` resets the blink timer.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: 40-column display, split windows, status line.
+- ZSpec S8.2 — Status line: reverse-video bar at row 0 (V1–3).
+- ZSpec S8.3.1 — True colour table mapped to VIC-II palette.
+- ZSpec S8.7.1 — Text styles applied via BitmapFont rendering.
+
+**Test Coverage (25 tests):**
+- ITheme: implements interface, CreateConfig returns config (2)
+- Screen Dimensions: 40×25, pixel dimensions with borders (2)
+- Color Palette: 14 entries, foreground light blue, background medium blue,
+  border medium blue, black is color 2, white is color 9 (6)
+- Font: C64 8×8 BitmapFont (1)
+- Chrome: borderless mode (1)
+- Renderer Integration: correct initialization, draws correct colors, status
+  line reverse video, border color fill (4)
+- Cursor Blinking: draws block, SetCursorPosition makes visible (2)
+- Post-Processing: scanlines darken rows, CRT curvature warps edges, phosphor
+  bloom brightens neighbors, PhosphorBloom defaults false, C64 defaults off (5)
+- Full Rendering: ZORK produces visible text, GuiScreen 40×25 (2)

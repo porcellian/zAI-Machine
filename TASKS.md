@@ -1165,7 +1165,7 @@ no anti-aliasing. Render glyphs as SkiaSharp pixel data.
 
 ---
 
-### 11.3 — C64 Classic Theme
+### 11.3 — C64 Classic Theme ✅
 
 Authentic Commodore 64 rendering, matching `examples/zork_i_c64.png`.
 Full-screen retro feel — no OS window chrome visible in the rendering area.
