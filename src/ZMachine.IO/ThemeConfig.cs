@@ -53,6 +53,9 @@ public class ThemeConfig
     /// <summary>Whether to apply CRT curvature distortion.</summary>
     public bool CrtCurvature { get; init; }
 
+    /// <summary>Whether to apply phosphor bloom/glow on bright pixels.</summary>
+    public bool PhosphorBloom { get; init; }
+
     /// <summary>
     /// Window chrome mode: borderless fills the entire window with the
     /// character grid; standard uses a windowed layout with native chrome.
