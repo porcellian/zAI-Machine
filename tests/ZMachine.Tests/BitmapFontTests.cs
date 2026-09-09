@@ -83,8 +83,8 @@ public class BitmapFontTests
     }
 
     /// <summary>
-    /// ZSCII character 158 (Ö) maps to ASCII 'O' (index 3 → 'A', index 4 → 'O', index 5 → 'U').
-    /// Actually index 4 maps to 'O'.
+    /// ZSCII character 159 (Ö) maps to ASCII 'O'.
+    /// ZSpec S3.8.5 — Default extra characters.
     /// </summary>
     [Fact]
     public void BitmapFont_ZsciiChar159_MapsToCapitalO()
@@ -93,6 +93,58 @@ public class BitmapFontTests
         var glyph159 = font.GetGlyph((char)159);
         var glyphO = font.GetGlyph('O');
         Assert.Equal(glyphO, glyph159);
+    }
+
+    /// <summary>
+    /// ZSCII character 203 (ø) maps to ASCII 'o'.
+    /// ZSpec S3.8.5 — Default extra characters.
+    /// </summary>
+    [Fact]
+    public void BitmapFont_ZsciiChar203_MapsToLowercaseO()
+    {
+        var font = BitmapFont.CreateBuiltIn();
+        var glyph203 = font.GetGlyph((char)203);
+        var glyphO = font.GetGlyph('o');
+        Assert.Equal(glyphO, glyph203);
+    }
+
+    /// <summary>
+    /// ZSCII character 209 (Ñ) maps to ASCII 'N'.
+    /// ZSpec S3.8.5 — Default extra characters.
+    /// </summary>
+    [Fact]
+    public void BitmapFont_ZsciiChar209_MapsToCapitalN()
+    {
+        var font = BitmapFont.CreateBuiltIn();
+        var glyph209 = font.GetGlyph((char)209);
+        var glyphN = font.GetGlyph('N');
+        Assert.Equal(glyphN, glyph209);
+    }
+
+    /// <summary>
+    /// ZSCII character 213 (ç) maps to ASCII 'c'.
+    /// ZSpec S3.8.5 — Default extra characters.
+    /// </summary>
+    [Fact]
+    public void BitmapFont_ZsciiChar213_MapsToLowercaseC()
+    {
+        var font = BitmapFont.CreateBuiltIn();
+        var glyph213 = font.GetGlyph((char)213);
+        var glyphC = font.GetGlyph('c');
+        Assert.Equal(glyphC, glyph213);
+    }
+
+    /// <summary>
+    /// ZSCII characters 224–251 are undefined and fall back to '?'.
+    /// ZSpec S3.8.5 — Only 155–223 have default assignments.
+    /// </summary>
+    [Fact]
+    public void BitmapFont_ZsciiChar224_FallsBackToQuestion()
+    {
+        var font = BitmapFont.CreateBuiltIn();
+        var glyph224 = font.GetGlyph((char)224);
+        var glyphQ = font.GetGlyph('?');
+        Assert.Equal(glyphQ, glyph224);
     }
 
     #endregion
