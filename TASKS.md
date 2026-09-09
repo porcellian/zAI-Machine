@@ -1235,7 +1235,7 @@ and a retro-colored text rendering area inside.
 
 ---
 
-### 11.5 — Apple II Theme
+### 11.5 — Apple II Theme ✅
 
 Classic Apple II monochrome phosphor display.
 
