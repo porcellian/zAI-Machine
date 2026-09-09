@@ -108,7 +108,7 @@ public class BitmapFont
             }
         }
 
-        // Bold: overdraw shifted right by 1 pixel
+        // ZSpec S8.7.1 — Bold: overdraw shifted right by 1 pixel
         if ((style & 2) != 0)
         {
             for (int py = 0; py < CharHeight; py++)
@@ -124,7 +124,7 @@ public class BitmapFont
             }
         }
 
-        // Italic: shift top half left by 1 pixel
+        // ZSpec S8.7.1 — Italic: shift top half left by 1 pixel
         if ((style & 4) != 0)
         {
             int halfH = CharHeight / 2;
