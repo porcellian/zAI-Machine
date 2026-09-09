@@ -1201,7 +1201,7 @@ Full-screen retro feel — no OS window chrome visible in the rendering area.
 
 ---
 
-### 11.4 — Modern C64 Theme
+### 11.4 — Modern C64 Theme ✅
 
 A modern windowed take on the C64 aesthetic, matching
 `examples/zork_i_modC64.jpg`. Standard OS window chrome with menu bar

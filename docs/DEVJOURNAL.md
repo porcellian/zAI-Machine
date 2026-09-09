@@ -3126,3 +3126,57 @@ metadata chunks (RelN, Fspc, IFhd, IFmd, RDes, AUTH, (c), ANNO).
 - Post-Processing: scanlines darken rows, CRT curvature warps edges, phosphor
   bloom brightens neighbors, PhosphorBloom defaults false, C64 defaults off (5)
 - Full Rendering: ZORK produces visible text, GuiScreen 40×25 (2)
+
+### Task 11.4 — Modern C64 Theme
+
+**Date**: 2026-09-08
+
+#### Steps Taken
+
+1. **Created `ModernC64Theme`** (`src/ZMachine.IO/ModernC64Theme.cs`) implementing
+   `ITheme` with a modern windowed interpretation of the C64 aesthetic:
+   - 80 columns × 30 rows — wider than the classic 40-column layout
+   - VGA 8×16 font for comfortable reading at modern resolutions
+   - Bright blue background (#0050A4) with white text
+   - Minimal 4px border matching the background color
+   - Standard chrome mode (OS title bar + native menu bar)
+   - No CRT post-processing effects — clean, modern presentation
+
+2. **Designed the Modern C64 palette** — 14 colors mapped to Z-Machine colors
+   2–15, using more saturated, modern values than the classic VIC-II palette
+   while keeping the spirit of the C64 color scheme.
+
+#### Design Decisions
+
+- **80 columns × 30 rows with VGA 8×16.** The screenshot shows a modern window
+  with wider-than-C64 text. 80 columns is the standard terminal width and
+  matches the screenshot's proportions. VGA 8×16 provides clean, legible text
+  without anti-aliasing, at a comfortable size for modern displays.
+
+- **Standard chrome mode.** Unlike the C64 Classic's borderless full-screen
+  layout, the modern variant uses OS window chrome with a title bar and menu
+  bar (File, Tools, Help), matching the reference screenshot's windowed layout.
+
+- **Minimal border (4px).** The screenshot shows text extending nearly edge to
+  edge within the canvas area. A 4px border provides just enough margin for
+  clean appearance without the wide CRT-style borders of the classic theme.
+
+- **No post-processing.** The modern theme is designed to be crisp and clean,
+  without scanlines or CRT effects. This matches the reference screenshot and
+  provides a contrasting aesthetic option alongside the vintage C64 Classic.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: 80-column display, wider than classic C64.
+- ZSpec S8.3.1 — True colour table mapped to modern C64-inspired palette.
+
+**Test Coverage (22 tests):**
+- ITheme: implements interface, CreateConfig returns config (2)
+- Screen Dimensions: 80×30, VGA 8×16 font, minimal border, pixel dims (4)
+- Color Palette: 14 entries, white foreground, bright blue background, border
+  matches background, black is color 2 (5)
+- Chrome and Effects: standard chrome, no post-processing (2)
+- Font: VGA BitmapFont (1)
+- Renderer Integration: initialization, white-on-blue draw, border color,
+  GuiScreen 80×30, ZORK rendering (5)
+- Classic vs Modern: wider columns, chrome mode, brighter blue (3)
