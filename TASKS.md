@@ -1258,7 +1258,7 @@ Classic Apple II monochrome phosphor display.
 
 ---
 
-### 11.6 — DOS Monochrome Themes (Green Screen and Amber Screen)
+### 11.6 — DOS Monochrome Themes (Green Screen and Amber Screen) ✅
 
 Replicate old-school IBM PC monochrome monitor looks — the MDA/Hercules
 green phosphor and the amber phosphor variant.
