@@ -1066,7 +1066,7 @@ public class Interpreter
                 break;
             case 2: // play
             {
-                int volumeRepeats = ops.Length > 2 ? ops[2] : 0xFF08;
+                int volumeRepeats = ops.Length > 2 ? ops[2] : 0x0008;
                 int volume = volumeRepeats & 0xFF;
                 int repeats = (volumeRepeats >> 8) & 0xFF;
                 ushort callback = ops.Length > 3 ? ops[3] : (ushort)0;
