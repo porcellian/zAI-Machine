@@ -1450,7 +1450,7 @@ Blorb "Sound Resource Chunks", "The Looping Chunk"
 
 ## Phase 13: V6 and Advanced Features
 
-### 13.1 — V6 Window System
+### 13.1 — V6 Window System ✅
 
 V6 has 8 independent windows (0–7), each with position, size, cursor,
 colors, font, attributes, and margins. All 8 treated identically except

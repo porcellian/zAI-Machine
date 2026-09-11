@@ -31,6 +31,7 @@ public class Interpreter
     private IInputStream _inputStream = null!;
     private IPictureProvider? _pictureProvider;
     private ISoundEngine? _soundEngine;
+    private V6WindowManager? _v6Windows;
     private int _version;
     private bool _running;
     private readonly List<string> _blorbWarnings = new();
@@ -69,6 +70,13 @@ public class Interpreter
         get => _soundEngine;
         set => _soundEngine = value;
     }
+
+    /// <summary>
+    /// V6 window manager for the 8 independent windows.
+    /// Initialized automatically when a V6 story is loaded.
+    /// </summary>
+    /// <remarks>ZSpec S8.8 — 8 windows with 18 properties each.</remarks>
+    public V6WindowManager? V6Windows => _v6Windows;
 
     /// <summary>
     /// The loaded Blorb resource file, or null if no Blorb was loaded.
@@ -246,6 +254,22 @@ public class Interpreter
         _screenStyleOps.OnBufferMode = screen.BufferMode;
         _screenStyleOps.OnGetCursor = screen.GetScreenSize; // placeholder
         _screenStyleOps.OnSetFont = f => { return f; };
+
+        // ZSpec S8.8 — V6 uses 8 independent windows
+        if (_version == 6)
+        {
+            var (cols, rows) = screen.GetScreenSize();
+            // V6 header stores pixel dimensions at 0x22/0x24 and
+            // font size at 0x26/0x27; use character cells as a
+            // fallback until the host writes pixel-accurate values.
+            int fontW = _memory.ReadByte(0x26);
+            int fontH = _memory.ReadByte(0x27);
+            if (fontW == 0) fontW = 1;
+            if (fontH == 0) fontH = 1;
+            int screenW = cols * fontW;
+            int screenH = rows * fontH;
+            _v6Windows = new V6WindowManager(screenW, screenH, fontW, fontH);
+        }
 
         // Initial PC and base frame.
         if (_version == 6)
@@ -817,9 +841,17 @@ public class Interpreter
                 _state.PC = inst.NextAddress;
                 break;
             case 10: // split_window
+                if (_v6Windows != null)
+                {
+                    int fontH = _v6Windows.Current.FontSize >> 8;
+                    if (fontH == 0) fontH = 1;
+                    _v6Windows.SplitWindow(ops[0], fontH);
+                }
                 _state.PC = inst.NextAddress;
                 break;
             case 11: // set_window
+                if (_v6Windows != null)
+                    _v6Windows.SetWindow(ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
             case 12: // call_vs2 (store)
@@ -925,6 +957,7 @@ public class Interpreter
         switch (inst.Opcode)
         {
             case 0: case 1: case 2: case 3: case 4: case 9: case 10: case 12:
+            case 19: // get_wind_prop (store)
                 InstructionDecoder.DecodeStore(_memory, ref inst);
                 break;
             case 6: // picture_data — branch only (no store)
@@ -975,8 +1008,43 @@ public class Interpreter
             case 12: // check_unicode
                 StoreAndAdvance(ref inst, _screenStyleOps.CheckUnicode(ops[0]));
                 break;
+            case 8: // set_margins left right window
+                if (_v6Windows != null)
+                {
+                    int win = ops.Length > 2 ? ops[2] : _v6Windows.SelectedWindow;
+                    _v6Windows.SetMargins(ops[0], ops[1], win);
+                }
+                _state.PC = inst.NextAddress;
+                break;
+            case 16: // move_window window y x
+                _v6Windows?.MoveWindow(ops[0], ops[1], ops.Length > 2 ? ops[2] : 0);
+                _state.PC = inst.NextAddress;
+                break;
+            case 17: // window_size window height width
+                _v6Windows?.WindowSize(ops[0], ops[1], ops.Length > 2 ? ops[2] : 0);
+                _state.PC = inst.NextAddress;
+                break;
+            case 18: // window_style window flags operation
+                _v6Windows?.WindowStyle(ops[0], ops[1], ops.Length > 2 ? ops[2] : 0);
+                _state.PC = inst.NextAddress;
+                break;
+            case 19: // get_wind_prop window property → result
+                StoreAndAdvance(ref inst,
+                    (ushort)(_v6Windows?.GetWindProp(ops[0], ops[1]) ?? 0));
+                break;
+            case 20: // put_wind_prop window property value
+                _v6Windows?.PutWindProp(ops[0], ops[1], ops[2]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 21: // scroll_window window pixels
+                _v6Windows?.ScrollWindow(ops[0], (short)ops[1]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 22: // mouse_window window
+                _v6Windows?.SetMouseWindow((short)ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
             default:
-                // Unknown EXT opcodes: skip silently.
                 _state.PC = inst.NextAddress;
                 break;
         }
