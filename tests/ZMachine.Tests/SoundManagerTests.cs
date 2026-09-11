@@ -43,11 +43,12 @@ public class SoundManagerTests
             Unloaded.Clear();
         }
 
+        /// <summary>Triggers the OnPlaybackFinished event for testing callbacks.</summary>
         public void SimulateFinished(int number)
             => OnPlaybackFinished?.Invoke(number);
     }
 
-    /// <summary>Creates a minimal Blorb with AIFF sound resources.</summary>
+    /// <summary>Creates a minimal Blorb with sound resources (no Loop chunk).</summary>
     private static byte[] BuildSoundBlorb(params (int Number, string Type, byte[] Data)[] sounds)
         => BuildSoundBlorbWithLoop(null, sounds);
 
@@ -161,10 +162,11 @@ public class SoundManagerTests
     private static byte[] CreateFakeOgg()
         => System.Text.Encoding.ASCII.GetBytes("OggSfakedata");
 
-    /// <summary>Creates fake MOD data.</summary>
+    /// <summary>Creates fake MOD data (minimum 1084 bytes for format recognition).</summary>
     private static byte[] CreateFakeMod()
-        => new byte[1084]; // MOD files are at least 1084 bytes
+        => new byte[1084];
 
+    /// <summary>Writes a 32-bit big-endian integer into a byte array.</summary>
     private static void WriteBE32(byte[] buf, int offset, int value)
     {
         buf[offset] = (byte)(value >> 24);
@@ -173,6 +175,7 @@ public class SoundManagerTests
         buf[offset + 3] = (byte)value;
     }
 
+    /// <summary>Writes a 32-bit big-endian integer to a BinaryWriter.</summary>
     private static void WriteBE32(BinaryWriter bw, int value)
     {
         bw.Write((byte)(value >> 24));
@@ -181,6 +184,7 @@ public class SoundManagerTests
         bw.Write((byte)value);
     }
 
+    /// <summary>Creates a SoundManager with the given Blorb and mock backend.</summary>
     private SoundManager CreateManager(BlorbReader? blorb, MockAudioBackend backend, int version = 5)
         => new SoundManager(blorb, backend, version);
 
@@ -188,6 +192,7 @@ public class SoundManagerTests
 
     #region No Blorb
 
+    /// <summary>Without a Blorb, HasSounds reports false.</summary>
     [Fact]
     public void NoBlorb_HasSounds_False()
     {
@@ -196,6 +201,7 @@ public class SoundManagerTests
         Assert.False(mgr.HasSounds);
     }
 
+    /// <summary>Without a Blorb, SoundCount is zero.</summary>
     [Fact]
     public void NoBlorb_SoundCount_Zero()
     {
@@ -204,6 +210,7 @@ public class SoundManagerTests
         Assert.Equal(0, mgr.SoundCount);
     }
 
+    /// <summary>Without a Blorb, PlaySound is a silent no-op.</summary>
     [Fact]
     public void NoBlorb_PlaySound_NoOp()
     {
@@ -217,6 +224,7 @@ public class SoundManagerTests
 
     #region Sound Resource Properties
 
+    /// <summary>HasSounds and SoundCount reflect loaded Blorb resources.</summary>
     [Fact]
     public void HasSounds_WithSoundResources()
     {
@@ -234,6 +242,10 @@ public class SoundManagerTests
 
     #region Channel Classification
 
+    /// <summary>
+    /// Blorb "Z-Machine Compatibility Issues" — AIFF resources
+    /// are classified as effects.
+    /// </summary>
     [Fact]
     public void Channel_AIFF_IsEffect()
     {
@@ -246,6 +258,10 @@ public class SoundManagerTests
         Assert.Equal(SoundChannel.Effect, mgr.GetChannel(1));
     }
 
+    /// <summary>
+    /// Blorb "Z-Machine Compatibility Issues" — Ogg Vorbis resources
+    /// are classified as music.
+    /// </summary>
     [Fact]
     public void Channel_OGGV_IsMusic()
     {
@@ -258,6 +274,10 @@ public class SoundManagerTests
         Assert.Equal(SoundChannel.Music, mgr.GetChannel(1));
     }
 
+    /// <summary>
+    /// Blorb "Z-Machine Compatibility Issues" — MOD resources
+    /// are classified as music.
+    /// </summary>
     [Fact]
     public void Channel_MOD_IsMusic()
     {
@@ -270,6 +290,7 @@ public class SoundManagerTests
         Assert.Equal(SoundChannel.Music, mgr.GetChannel(1));
     }
 
+    /// <summary>Nonexistent resource numbers return SoundChannel.None.</summary>
     [Fact]
     public void Channel_Nonexistent_IsNone()
     {
@@ -286,6 +307,10 @@ public class SoundManagerTests
 
     #region Dual-Channel Model
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — playing a new effect stops the
+    /// current effect on the same channel.
+    /// </summary>
     [Fact]
     public void Effect_InterruptsEffect()
     {
@@ -304,6 +329,10 @@ public class SoundManagerTests
         Assert.Equal(2, backend.Played.Count);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — playing new music stops the
+    /// current music on the same channel.
+    /// </summary>
     [Fact]
     public void Music_InterruptsMusic()
     {
@@ -321,6 +350,10 @@ public class SoundManagerTests
         Assert.Equal(2, backend.Played.Count);
     }
 
+    /// <summary>
+    /// Blorb "Z-Machine Compatibility Issues" — starting an effect
+    /// must NOT interrupt currently playing music.
+    /// </summary>
     [Fact]
     public void Effect_DoesNotInterruptMusic()
     {
@@ -339,6 +372,10 @@ public class SoundManagerTests
         Assert.Equal(2, backend.Played.Count);
     }
 
+    /// <summary>
+    /// Blorb "Z-Machine Compatibility Issues" — starting music
+    /// must NOT interrupt a currently playing effect.
+    /// </summary>
     [Fact]
     public void Music_DoesNotInterruptEffect()
     {
@@ -360,6 +397,10 @@ public class SoundManagerTests
 
     #region Volume
 
+    /// <summary>
+    /// ZSpec11 "Volume guidelines" — volume 255 is mapped to
+    /// the maximum engine value of 8.
+    /// </summary>
     [Fact]
     public void Volume_255_MappedTo8()
     {
@@ -375,6 +416,10 @@ public class SoundManagerTests
         Assert.Equal(8, backend.Played[0].Volume);
     }
 
+    /// <summary>
+    /// ZSpec11 "Volume guidelines" — volume values 1–8 are
+    /// passed through without modification.
+    /// </summary>
     [Fact]
     public void Volume_Clamped_1to8()
     {
@@ -394,6 +439,10 @@ public class SoundManagerTests
 
     #region Repeats V5+
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — V5 repeats of 0 is illegal;
+    /// interpreters should treat it as 1 (play once).
+    /// </summary>
     [Fact]
     public void V5_ZeroRepeats_TreatedAsOne()
     {
@@ -409,6 +458,10 @@ public class SoundManagerTests
         Assert.Equal(1, backend.Played[0].Repeats);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — V5 repeats indicates total
+    /// number of plays, passed through to the backend.
+    /// </summary>
     [Fact]
     public void V5_Repeats_PassedThrough()
     {
@@ -428,6 +481,10 @@ public class SoundManagerTests
 
     #region Callbacks
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — callback routine is invoked
+    /// when a sound finishes playing all requested repeats.
+    /// </summary>
     [Fact]
     public void Callback_FiredOnNaturalFinish()
     {
@@ -446,6 +503,10 @@ public class SoundManagerTests
         Assert.Equal(0x1234, callbackAddr);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — callback is NOT invoked when
+    /// a sound is manually stopped via StopSound.
+    /// </summary>
     [Fact]
     public void Callback_NotFiredOnManualStop()
     {
@@ -464,6 +525,10 @@ public class SoundManagerTests
         Assert.False(callbackFired);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — callback is NOT invoked when
+    /// a sound is interrupted by another sound on the same channel.
+    /// </summary>
     [Fact]
     public void Callback_NotFiredOnInterruption()
     {
@@ -478,12 +543,15 @@ public class SoundManagerTests
         mgr.OnCallback += _ => callbackFired = true;
 
         mgr.PlaySound(1, 8, 1, 0x1234);
-        // Effect 2 interrupts effect 1 — callback should NOT fire
         mgr.PlaySound(2, 8, 1, 0);
 
         Assert.False(callbackFired);
     }
 
+    /// <summary>
+    /// A callback address of 0 means no callback — the event
+    /// should not fire even when playback finishes naturally.
+    /// </summary>
     [Fact]
     public void Callback_ZeroAddress_NotFired()
     {
@@ -506,6 +574,10 @@ public class SoundManagerTests
 
     #region Stop and Unload
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" action 3 — stops a specific
+    /// sound if it is currently playing.
+    /// </summary>
     [Fact]
     public void StopSound_SpecificNumber()
     {
@@ -521,6 +593,10 @@ public class SoundManagerTests
         Assert.Contains(1, backend.Stopped);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — @sound_effect 0 3 stops all
+    /// sounds on both effect and music channels.
+    /// </summary>
     [Fact]
     public void StopSound_Zero_StopsAll()
     {
@@ -539,6 +615,10 @@ public class SoundManagerTests
         Assert.Contains(2, backend.Stopped);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" action 4 — stops the sound if
+    /// playing, then releases its cached data.
+    /// </summary>
     [Fact]
     public void UnloadSound_StopsAndUnloads()
     {
@@ -555,6 +635,10 @@ public class SoundManagerTests
         Assert.Contains(1, backend.Unloaded);
     }
 
+    /// <summary>
+    /// ZSpec11 "@sound_effect" — @sound_effect 0 4 stops and
+    /// unloads all sounds on both channels.
+    /// </summary>
     [Fact]
     public void UnloadSound_Zero_StopsAndUnloadsAll()
     {
@@ -570,6 +654,7 @@ public class SoundManagerTests
         Assert.True(backend.AllUnloaded);
     }
 
+    /// <summary>StopAll stops sounds on both effect and music channels.</summary>
     [Fact]
     public void StopAll_BothChannels()
     {
@@ -592,6 +677,10 @@ public class SoundManagerTests
 
     #region V3 Loop Chunk
 
+    /// <summary>
+    /// Blorb "The Looping Chunk" — V3 entry with repeats=1
+    /// means play the sound exactly once.
+    /// </summary>
     [Fact]
     public void V3_LoopChunk_PlayOnce()
     {
@@ -608,6 +697,10 @@ public class SoundManagerTests
         Assert.Equal(1, backend.Played[0].Repeats);
     }
 
+    /// <summary>
+    /// Blorb "The Looping Chunk" — V3 entry with repeats=0
+    /// means loop the sound indefinitely (mapped to 0xFF).
+    /// </summary>
     [Fact]
     public void V3_LoopChunk_LoopForever()
     {
@@ -621,14 +714,17 @@ public class SoundManagerTests
         mgr.PlaySound(1, 8, 0, 0);
 
         Assert.Single(backend.Played);
-        Assert.Equal(255, backend.Played[0].Repeats); // 0xFF = loop forever
+        Assert.Equal(255, backend.Played[0].Repeats);
     }
 
+    /// <summary>
+    /// Blorb "The Looping Chunk" — V3 sound with no Loop chunk
+    /// entry defaults to playing exactly once.
+    /// </summary>
     [Fact]
     public void V3_NoLoopEntry_PlayOnce()
     {
         byte[] aiff = CreateFakeAiff();
-        // Loop chunk present but no entry for sound 1
         var loopEntries = new[] { (Number: 99, Repeats: 0) };
         byte[] blorb = BuildSoundBlorbWithLoop(loopEntries, (1, "FORM", aiff));
         var reader = BlorbReader.Load(blorb);
@@ -645,6 +741,10 @@ public class SoundManagerTests
 
     #region BlorbReader Loop Parsing
 
+    /// <summary>
+    /// Blorb "The Looping Chunk" — 'Loop' chunk with two entries
+    /// is parsed into the LoopInfo dictionary.
+    /// </summary>
     [Fact]
     public void BlorbReader_LoopChunk_Parsed()
     {
@@ -659,6 +759,9 @@ public class SoundManagerTests
         Assert.Equal(0, reader.LoopInfo[2]);
     }
 
+    /// <summary>
+    /// BlorbReader.LoopInfo is null when no 'Loop' chunk is present.
+    /// </summary>
     [Fact]
     public void BlorbReader_NoLoopChunk_Null()
     {
@@ -673,6 +776,10 @@ public class SoundManagerTests
 
     #region PrepareSound
 
+    /// <summary>
+    /// ZSpec S9 @sound_effect action 1 — PrepareSound loads
+    /// the resource data into the audio backend.
+    /// </summary>
     [Fact]
     public void PrepareSound_LoadsData()
     {
@@ -688,6 +795,7 @@ public class SoundManagerTests
         Assert.Equal(1, backend.Loaded[0].Number);
     }
 
+    /// <summary>Preparing a nonexistent sound is a silent no-op.</summary>
     [Fact]
     public void PrepareSound_Nonexistent_NoOp()
     {
@@ -706,6 +814,7 @@ public class SoundManagerTests
 
     #region ISoundEngine Interface
 
+    /// <summary>SoundManager implements the ISoundEngine interface.</summary>
     [Fact]
     public void ImplementsISoundEngine()
     {
@@ -718,6 +827,7 @@ public class SoundManagerTests
 
     #region Dispose
 
+    /// <summary>Dispose stops all currently playing sounds.</summary>
     [Fact]
     public void Dispose_StopsAll()
     {
