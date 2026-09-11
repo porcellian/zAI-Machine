@@ -30,6 +30,7 @@ public class Interpreter
 
     private IInputStream _inputStream = null!;
     private IPictureProvider? _pictureProvider;
+    private ISoundEngine? _soundEngine;
     private int _version;
     private bool _running;
     private readonly List<string> _blorbWarnings = new();
@@ -54,6 +55,19 @@ public class Interpreter
     {
         get => _pictureProvider;
         set => _pictureProvider = value;
+    }
+
+    /// <summary>
+    /// Sound engine for @sound_effect opcode.
+    /// Set by the host before calling Run() when Blorb sounds are available.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S9 — sound effects. ZSpec11 "@sound_effect" — dual-channel model.
+    /// </remarks>
+    public ISoundEngine? SoundEngine
+    {
+        get => _soundEngine;
+        set => _soundEngine = value;
     }
 
     /// <summary>
@@ -844,8 +858,8 @@ public class Interpreter
             case 20: // input_stream
                 _state.PC = inst.NextAddress;
                 break;
-            case 21: // sound_effect (stub)
-                _state.PC = inst.NextAddress;
+            case 21: // sound_effect
+                ExecuteSoundEffect(ref inst, ops);
                 break;
             case 22: // read_char (store)
             {
@@ -1028,6 +1042,48 @@ public class Interpreter
         int y = ops.Length > 1 ? ops[1] : 1;
         int x = ops.Length > 2 ? ops[2] : 1;
         _pictureProvider.ErasePicture(pic, y, x);
+    }
+
+    /// <summary>
+    /// ZSpec S9, ZSpec11 "@sound_effect" — VAR:245 21.
+    /// Op 1: sound number. Op 2: action (1=prepare, 2=play, 3=stop, 4=unload).
+    /// Op 3: volume (low byte) + repeats (high byte).
+    /// Op 4: callback routine address.
+    /// </summary>
+    private void ExecuteSoundEffect(ref Instruction inst, ushort[] ops)
+    {
+        _state.PC = inst.NextAddress;
+
+        if (_soundEngine == null) return;
+
+        int number = ops.Length > 0 ? ops[0] : 0;
+        int action = ops.Length > 1 ? ops[1] : 2;
+
+        switch (action)
+        {
+            case 1: // prepare
+                _soundEngine.PrepareSound(number);
+                break;
+            case 2: // play
+            {
+                int volumeRepeats = ops.Length > 2 ? ops[2] : 0xFF08;
+                int volume = volumeRepeats & 0xFF;
+                int repeats = (volumeRepeats >> 8) & 0xFF;
+                ushort callback = ops.Length > 3 ? ops[3] : (ushort)0;
+
+                if (volume == 0) volume = 8;
+                if (repeats == 0 && _version >= 5) repeats = 1;
+
+                _soundEngine.PlaySound(number, volume, repeats, callback);
+                break;
+            }
+            case 3: // stop
+                _soundEngine.StopSound(number);
+                break;
+            case 4: // stop + unload
+                _soundEngine.UnloadSound(number);
+                break;
+        }
     }
 
     #endregion

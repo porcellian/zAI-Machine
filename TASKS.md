@@ -1412,7 +1412,7 @@ Elbow Room Factor (ERF).
 
 ---
 
-### 12.3 — Sound Resource Loading and Playback
+### 12.3 — Sound Resource Loading and Playback ✅
 
 Load and play sounds from Blorb: AIFF (effects), Ogg (music/effects),
 MOD (music). Dual-channel model.
