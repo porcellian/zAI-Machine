@@ -19,6 +19,9 @@ public partial class MainWindow : Window
     private GuiScreen? _guiScreen;
     private GuiInputStream? _guiInputStream;
     private Thread? _interpreterThread;
+    private UserPreferences _preferences = new();
+    private ITheme _currentTheme = ThemeRegistry.Default;
+    private string? _currentStoryPath;
 
     // Line-input mode state
     private bool _lineInputMode;
@@ -30,6 +33,10 @@ public partial class MainWindow : Window
         Focusable = true;
         KeyDown += OnKeyDown;
         TextInput += OnTextInput;
+
+        _preferences = UserPreferences.Load();
+        _currentTheme = _preferences.ResolveTheme();
+        BuildThemeMenu();
     }
 
     /// <summary>
@@ -116,14 +123,101 @@ public partial class MainWindow : Window
         await dialog.ShowDialog(this);
     }
 
+    private NativeMenu? _themeMenu;
+
+    /// <summary>
+    /// Builds the Options → Theme submenu dynamically from ThemeRegistry.
+    /// Inserts theme items into the Options menu found via the NativeMenu
+    /// attached property. Each theme gets a menu item; the current theme
+    /// is marked with a bullet prefix.
+    /// </summary>
+    private void BuildThemeMenu()
+    {
+        var topMenu = NativeMenu.GetMenu(this);
+        if (topMenu == null) return;
+
+        NativeMenuItem? optionsItem = null;
+        foreach (var item in topMenu.Items)
+        {
+            if (item is NativeMenuItem mi && mi.Header == "Options")
+            {
+                optionsItem = mi;
+                break;
+            }
+        }
+        if (optionsItem?.Menu == null) return;
+
+        var themeSubmenu = new NativeMenuItem("Theme");
+        _themeMenu = new NativeMenu();
+
+        foreach (var theme in ThemeRegistry.GetAll())
+        {
+            string label = theme.Name == _currentTheme.Name
+                ? $"● {theme.Name}"
+                : $"  {theme.Name}";
+
+            var menuItem = new NativeMenuItem(label);
+            string themeName = theme.Name;
+            menuItem.Click += (_, _) => SwitchTheme(themeName);
+            _themeMenu.Items.Add(menuItem);
+        }
+
+        themeSubmenu.Menu = _themeMenu;
+        optionsItem.Menu.Items.Insert(0, themeSubmenu);
+        optionsItem.Menu.Items.Insert(1, new NativeMenuItemSeparator());
+    }
+
+    /// <summary>
+    /// Switches to a new theme by name. Reinitializes the renderer with
+    /// the new theme's config and redraws the current screen contents.
+    /// Saves the preference to disk.
+    /// </summary>
+    internal void SwitchTheme(string themeName)
+    {
+        var theme = ThemeRegistry.GetByName(themeName);
+        if (theme == null) return;
+
+        _currentTheme = theme;
+        _preferences.Theme = themeName;
+        _preferences.Save();
+
+        if (_renderer != null)
+        {
+            var config = theme.CreateConfig();
+            _renderer.Initialize(config.PixelWidth, config.PixelHeight, config);
+            _guiScreen?.ForceRefresh();
+            GameCanvas.InvalidateVisual();
+        }
+
+        UpdateThemeMenuChecks();
+    }
+
+    private void UpdateThemeMenuChecks()
+    {
+        if (_themeMenu == null) return;
+
+        var themes = ThemeRegistry.GetAll();
+        for (int i = 0; i < _themeMenu.Items.Count && i < themes.Count; i++)
+        {
+            if (_themeMenu.Items[i] is NativeMenuItem mi)
+            {
+                mi.Header = themes[i].Name == _currentTheme.Name
+                    ? $"● {themes[i].Name}"
+                    : $"  {themes[i].Name}";
+            }
+        }
+    }
+
     private void LoadAndRunStory(string path)
     {
         StopInterpreter();
 
+        _currentStoryPath = path;
         _renderer = new SkiaRenderer();
-        var theme = new ThemeConfig();
+        var config = _currentTheme.CreateConfig();
 
-        _guiScreen = new GuiScreen(_renderer, theme);
+        _renderer.Initialize(config.PixelWidth, config.PixelHeight, config);
+        _guiScreen = new GuiScreen(_renderer, config);
         _guiInputStream = new GuiInputStream();
 
         GameCanvas.Attach(_renderer);
@@ -159,8 +253,6 @@ public partial class MainWindow : Window
 
     private void StopInterpreter()
     {
-        // The interpreter thread is background, so it will be killed
-        // when we null the reference and the new one starts.
         _interpreter = null;
         _interpreterThread = null;
         _lineBuffer.Clear();
