@@ -3477,3 +3477,68 @@ Phase 11. Three new components:
 - Theme Switching: renderer dims change, new palette used, GuiScreen
   dimensions update (3)
 - Full Workflow: save → load → resolve → create config end-to-end (1)
+
+---
+
+### Task 12.1 — Picture Resource Loading and Display
+
+**Date:** 2026-09-11
+
+#### What Was Done
+
+Implemented picture resource loading from Blorb and wired up the three
+picture opcodes in the Z-Machine interpreter:
+
+1. **IPictureProvider** (`src/ZMachine.Core/IPictureProvider.cs`) — interface
+   decoupling the interpreter engine from SkiaSharp. Exposes HasPictures,
+   GetPictureSize, DrawPicture, ErasePicture, and IsPlaceholder.
+
+2. **PictureManager** (`src/ZMachine.IO/PictureManager.cs`) — IO-layer
+   implementation that decodes PNG/JPEG from Blorb via `SKBitmap.Decode()`,
+   caches decoded bitmaps, and parses Rect placeholder dimensions from the
+   8-byte chunk data (big-endian width + height).
+
+3. **Opcode wiring** (`src/ZMachine.Core/ZMachine.cs`) — added EXT:5
+   (@draw_picture), EXT:6 (@picture_data), and EXT:7 (@erase_picture) to
+   DispatchEXT. @picture_data decodes branch for pic==0 (availability query
+   writing count/release) and pic>0 (existence query writing height/width).
+
+#### Design Decisions
+
+- **IPictureProvider in Core, PictureManager in IO.** Core has no SkiaSharp
+  dependency and must stay that way. The interface lets Core call picture
+  operations through an abstraction; the IO layer provides the implementation
+  with actual image decoding. The host sets `ZMachine.PictureProvider` before
+  calling Run().
+
+- **Bitmap caching.** Decoded SKBitmaps are cached by picture number to avoid
+  re-decoding on repeated @draw_picture calls (common in V6 games that redraw
+  scenes). The size is also cached separately since @picture_data may be
+  called many times without drawing.
+
+- **Rect placeholder behavior.** Per Blorb spec: Rect exists for @picture_data
+  and @erase_picture, but @draw_picture is an error. PictureManager returns
+  false for draw on Rect, and parses the 8-byte big-endian width/height for
+  GetPictureSize.
+
+- **@picture_data array layout.** For pic==0: array[0] = count, array[1] =
+  release. For pic>0: array[0] = height, array[1] = width. This follows the
+  Z-Machine spec where height precedes width in the output array.
+
+#### Spec References
+
+- Blorb "Picture Resource Chunks" — PNG, JPEG, Rect formats.
+- Blorb "Placeholder Pictures" — Rect is valid for @picture_data/@erase_picture only.
+- ZSpec11 "@picture_data" — pic 0 branches on availability, pic N branches on existence.
+- ZSpec S15 EXT:5, EXT:6, EXT:7 — draw_picture, picture_data, erase_picture.
+
+**Test Coverage (25 tests):**
+- No Blorb: all queries return false/zero/empty (5)
+- PNG Loading: has picture, dimensions, not placeholder, draw returns true,
+  multiple pictures, caching (6)
+- Rect Placeholders: is placeholder, dimensions, has picture, draw false,
+  erase true, zero dims (6)
+- Mixed: PNG + Rect together (1)
+- Nonexistent: has/size/draw/placeholder all fail gracefully (4)
+- IPictureProvider: implements interface, release default (2)
+- Dispose: no throw after use (1)

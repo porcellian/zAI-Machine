@@ -1364,7 +1364,7 @@ The theme picker and user preferences system.
 
 ## Phase 12: Graphics and Sound
 
-### 12.1 — Picture Resource Loading and Display
+### 12.1 — Picture Resource Loading and Display ✅
 
 Load picture resources from Blorb and render via the GUI.
 Support PNG, JPEG, and Rect placeholders.

@@ -29,6 +29,7 @@ public class Interpreter
     private StatusLineHandler _statusLineHandler = null!;
 
     private IInputStream _inputStream = null!;
+    private IPictureProvider? _pictureProvider;
     private int _version;
     private bool _running;
     private readonly List<string> _blorbWarnings = new();
@@ -44,6 +45,16 @@ public class Interpreter
 
     /// <summary>Whether the machine is currently running.</summary>
     public bool Running => _running;
+
+    /// <summary>
+    /// Picture provider for @draw_picture, @picture_data, @erase_picture.
+    /// Set by the host before calling Run() when Blorb pictures are available.
+    /// </summary>
+    public IPictureProvider? PictureProvider
+    {
+        get => _pictureProvider;
+        set => _pictureProvider = value;
+    }
 
     /// <summary>
     /// The loaded Blorb resource file, or null if no Blorb was loaded.
@@ -902,6 +913,9 @@ public class Interpreter
             case 0: case 1: case 2: case 3: case 4: case 9: case 10: case 12:
                 InstructionDecoder.DecodeStore(_memory, ref inst);
                 break;
+            case 6: // picture_data — branch only (no store)
+                InstructionDecoder.DecodeBranch(_memory, ref inst);
+                break;
         }
 
         var ops = ResolveOperands(ref inst);
@@ -923,6 +937,17 @@ public class Interpreter
             case 4: // set_font
                 StoreAndAdvance(ref inst, _screenStyleOps.SetFont(ops[0]));
                 break;
+            case 5: // draw_picture pic y x
+                ExecuteDrawPicture(ops);
+                _state.PC = inst.NextAddress;
+                break;
+            case 6: // picture_data pic array
+                ExecutePictureData(ref inst, ops);
+                break;
+            case 7: // erase_picture pic y x
+                ExecuteErasePicture(ops);
+                _state.PC = inst.NextAddress;
+                break;
             case 9: // save_undo
                 StoreAndAdvance(ref inst, _screenStyleOps.SaveUndo());
                 break;
@@ -941,6 +966,68 @@ public class Interpreter
                 _state.PC = inst.NextAddress;
                 break;
         }
+    }
+
+    /// <summary>
+    /// EXT:5 @draw_picture pic y x — draws a picture at (y, x).
+    /// Blorb "Placeholder Pictures" — drawing a Rect is an error (no-op).
+    /// </summary>
+    private void ExecuteDrawPicture(ushort[] ops)
+    {
+        if (_pictureProvider == null) return;
+
+        int pic = ops[0];
+        int y = ops.Length > 1 ? ops[1] : 1;
+        int x = ops.Length > 2 ? ops[2] : 1;
+        _pictureProvider.DrawPicture(pic, y, x);
+    }
+
+    /// <summary>
+    /// EXT:6 @picture_data pic array — queries picture info.
+    /// If pic==0: branches if pictures available, writes (release, count) to array.
+    /// If pic>0: branches if picture exists, writes (height, width) to array.
+    /// ZSpec11 "@picture_data".
+    /// </summary>
+    private void ExecutePictureData(ref Instruction inst, ushort[] ops)
+    {
+        int pic = ops[0];
+        int arrayAddr = ops.Length > 1 ? ops[1] : 0;
+
+        if (pic == 0)
+        {
+            bool available = _pictureProvider?.HasPictures ?? false;
+            if (available && arrayAddr > 0)
+            {
+                _memory.WriteWord(arrayAddr, (ushort)(_pictureProvider!.PictureCount));
+                _memory.WriteWord(arrayAddr + 2, (ushort)(_pictureProvider.ReleaseNumber));
+            }
+            BranchAndAdvance(ref inst, available);
+        }
+        else
+        {
+            bool exists = _pictureProvider?.HasPicture(pic) ?? false;
+            if (exists && arrayAddr > 0)
+            {
+                var (w, h) = _pictureProvider!.GetPictureSize(pic);
+                _memory.WriteWord(arrayAddr, (ushort)h);
+                _memory.WriteWord(arrayAddr + 2, (ushort)w);
+            }
+            BranchAndAdvance(ref inst, exists);
+        }
+    }
+
+    /// <summary>
+    /// EXT:7 @erase_picture pic y x — erases the area occupied by a picture.
+    /// Works for both real pictures and Rect placeholders.
+    /// </summary>
+    private void ExecuteErasePicture(ushort[] ops)
+    {
+        if (_pictureProvider == null) return;
+
+        int pic = ops[0];
+        int y = ops.Length > 1 ? ops[1] : 1;
+        int x = ops.Length > 2 ? ops[2] : 1;
+        _pictureProvider.ErasePicture(pic, y, x);
     }
 
     #endregion
