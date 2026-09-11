@@ -201,6 +201,27 @@ public class V6WindowManager
     }
 
     /// <summary>
+    /// Returns whether a click at the given screen position should be
+    /// delivered as input, based on the current mouse window setting.
+    /// ZSpec11 "Mouse clicks" — clicks outside the designated mouse
+    /// window are ignored for input purposes; -1 accepts any window.
+    /// </summary>
+    /// <param name="y">Click Y position, 1-based from top of display.</param>
+    /// <param name="x">Click X position, 1-based from left of display.</param>
+    public bool IsClickInMouseWindow(int y, int x)
+    {
+        if (_mouseWindow == -1)
+            return true;
+
+        if (_mouseWindow < 0 || _mouseWindow > 7)
+            return false;
+
+        var w = _windows[_mouseWindow];
+        return y >= w.Y && y < w.Y + w.Height
+            && x >= w.X && x < w.X + w.Width;
+    }
+
+    /// <summary>
     /// VAR:10 @split_window lines (V6 behavior).
     /// ZSpec11 "@split_window" — manipulates windows 0 and 1.
     /// Window 1 gets the specified height; window 0 fills below.

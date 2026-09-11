@@ -383,6 +383,7 @@ public class Disassembler
         18 => "window_style", 19 => "get_wind_prop",
         20 => "put_wind_prop", 21 => "scroll_window",
         22 => "mouse_window",
+        23 => "read_mouse",
         _ => $"EXT:{op}"
     };
 

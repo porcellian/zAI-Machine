@@ -3877,3 +3877,63 @@ black ($0000) if not specified or zero.
 - NumberToTrueColour: standard, transparent (2)
 - TrueColourToNumber: transparent → 15 (1)
 - IsTransparent: -4 true, others false (4)
+
+---
+
+## Task 13.3 — Mouse Input
+
+**Date**: 2026-09-11
+
+### Overview
+
+Implemented mouse input infrastructure per ZSpec11 "@read_mouse",
+"Mouse clicks", and "Mouse co-ordinates". Created `MouseState` class
+for tracking position, buttons, and menu state. Wired `@read_mouse`
+(EXT:23), mouse click coordinate writes during `@read` and `@read_char`
+input termination, and ZSCII click code generation.
+
+### Design Decisions
+
+**MouseState as a data class**: The GUI host updates `MouseState`
+directly with position and button state from native mouse events.
+The interpreter reads it for `@read_mouse` (realtime) and writes
+click coordinates to the header during input. This avoids callback
+complexity — the GUI just sets properties on the object.
+
+**Realtime @read_mouse**: Per ZSpec11, `@read_mouse` reads the
+*current* mouse position, even outside the mouse window. The state
+is whatever the GUI host last wrote. `V6WindowManager.IsClickInMouseWindow`
+checks whether a click falls within the designated mouse window, and
+`MouseState.ShouldDeliverClick` wraps this for the input layer.
+
+**Click header coordinates**: When `@read` or `@read_char` terminates
+with ZSCII 254 (single/first click) or 253 (second of double, V6),
+`WriteClickToHeader` writes the position to header words $24/$26.
+Coordinates are always 1-based relative to top-left of the display.
+
+**ZSCII click codes**: V5 always returns 254 for any click. V6
+distinguishes single/first (254) from second-of-double-click (253).
+The GUI host determines whether a click is a double-click.
+
+**Array format**: `@read_mouse` writes four words: y, x, buttons, menu.
+Buttons use natural platform ordering (bit 0 = primary, bit 1 = secondary).
+
+### Spec References
+
+- ZSpec11 "@read_mouse" — realtime position, report outside window.
+- ZSpec11 "Mouse clicks" — V5: 254; V6: 254/253 for single/double.
+- ZSpec11 "Mouse co-ordinates" — 1-based from (1,1), written to header.
+
+### Test Coverage (19 tests)
+
+- Default state: position (1,1), buttons 0, menu 0 (3)
+- SetPosition/SetButtons: update, independence (4)
+- WriteToArray: all four words, default values (2)
+- WriteClickToHeader: writes to $24/$26 (1)
+- GetClickZscii: V5 always 254, V6 single 254, V6 double 253,
+  non-V6 always 254 (5)
+- Negative position values allowed (1)
+- Button bits individually readable (1)
+- Mouse window filtering: no manager (V5), inside, outside,
+  -1 any window, changed target, boundary cases (7)
+- Disassembler mnemonic: EXT:23 = read_mouse (2, inline)
