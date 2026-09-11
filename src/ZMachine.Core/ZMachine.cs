@@ -32,6 +32,7 @@ public class Interpreter
     private IPictureProvider? _pictureProvider;
     private ISoundEngine? _soundEngine;
     private V6WindowManager? _v6Windows;
+    private TrueColourManager? _trueColourManager;
     private int _version;
     private bool _running;
     private readonly List<string> _blorbWarnings = new();
@@ -77,6 +78,13 @@ public class Interpreter
     /// </summary>
     /// <remarks>ZSpec S8.8 — 8 windows with 18 properties each.</remarks>
     public V6WindowManager? V6Windows => _v6Windows;
+
+    /// <summary>
+    /// True colour manager for Standard 1.1 colour operations.
+    /// Available after Init(). Null for versions below 5.
+    /// </summary>
+    /// <remarks>ZSpec11 "@set_true_colour", "Colour numbers".</remarks>
+    public TrueColourManager? TrueColours => _trueColourManager;
 
     /// <summary>
     /// The loaded Blorb resource file, or null if no Blorb was loaded.
@@ -247,6 +255,14 @@ public class Interpreter
         _controlFlowOps = new ControlFlowOps(_memory, _state, _version, routinesOffset);
         _screenStyleOps = new ScreenStyleOps(_memory, _version);
         _statusLineHandler = new StatusLineHandler(_memory, _objectTable, _textDecoder);
+
+        // ZSpec11 — parse header extension for true colours and Flags 3
+        if (_version >= 5)
+        {
+            ushort extAddr = _memory.ReadWord(0x36);
+            HeaderExtension? ext = extAddr > 0 ? new HeaderExtension(_memory, extAddr) : null;
+            _trueColourManager = new TrueColourManager(_memory, _version, ext);
+        }
 
         // Wire screen callbacks.
         _screenStyleOps.OnSetTextStyle = screen.SetTextStyle;
@@ -533,7 +549,7 @@ public class Interpreter
                 InvokeCall(ref inst, ops, 1, store: false);
                 break;
             case 27: // set_colour (V5+)
-                _screenStyleOps.SetColour((short)ops[0], (short)ops[1]);
+                ExecuteSetColour(ops);
                 _state.PC = inst.NextAddress;
                 break;
             case 28: // throw (V5+)
@@ -1008,6 +1024,10 @@ public class Interpreter
             case 12: // check_unicode
                 StoreAndAdvance(ref inst, _screenStyleOps.CheckUnicode(ops[0]));
                 break;
+            case 13: // set_true_colour fg bg [window]
+                ExecuteSetTrueColour(ops);
+                _state.PC = inst.NextAddress;
+                break;
             case 8: // set_margins left right window
                 if (_v6Windows != null)
                 {
@@ -1110,6 +1130,96 @@ public class Interpreter
         int y = ops.Length > 1 ? ops[1] : 1;
         int x = ops.Length > 2 ? ops[2] : 1;
         _pictureProvider.ErasePicture(pic, y, x);
+    }
+
+    /// <summary>
+    /// 2OP:27 <c>@set_colour fg bg</c> — sets foreground and background colours.
+    /// In V6, also updates window properties 11 (colour data) and 16/17
+    /// (true colours) using the standard colour equivalences.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec11 "@set_colour" — colour 15 = transparent (V6 bg only).
+    /// Transparent foreground produces a diagnostic.
+    /// </remarks>
+    private void ExecuteSetColour(ushort[] ops)
+    {
+        int fg = (short)ops[0];
+        int bg = (short)ops[1];
+
+        // ZSpec11 — transparent foreground is invalid
+        if (fg == 15 && _version == 6)
+            _blorbWarnings.Add("Transparent foreground is not valid (ZSpec11 \"@set_colour\")");
+
+        _screenStyleOps.SetColour(fg, bg);
+
+        // Update V6 window true colour properties from standard equivalences
+        if (_v6Windows != null && _trueColourManager != null)
+        {
+            var w = _v6Windows.Current;
+
+            int resolvedFg = fg == 0 ? _screenStyleOps.ForegroundColor : fg;
+            int resolvedBg = bg == 0 ? _screenStyleOps.BackgroundColor : bg;
+
+            if (resolvedBg == 15)
+                w.TrueBackground = -4;
+            else if (resolvedBg >= 2 && resolvedBg <= 12)
+                w.TrueBackground = TrueColourManager.GetStandardTrueColour(resolvedBg);
+
+            if (resolvedFg >= 2 && resolvedFg <= 12)
+                w.TrueForeground = TrueColourManager.GetStandardTrueColour(resolvedFg);
+
+            w.ColourData = (resolvedBg << 8) | resolvedFg;
+        }
+    }
+
+    /// <summary>
+    /// EXT:13 <c>@set_true_colour fg bg [window]</c> — sets true colours
+    /// using 15-bit sRGB values. Updates V6 window properties 16/17 and
+    /// the colour number in property 11.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec11 "@set_true_colour" — magic values -1 to -4.
+    /// ZSpec11 "Colour numbers" — non-standard colours tracked as 16–255.
+    /// </remarks>
+    private void ExecuteSetTrueColour(ushort[] ops)
+    {
+        if (_trueColourManager == null) return;
+
+        int fg = (short)ops[0];
+        int bg = (short)ops[1];
+
+        // V6 optional window parameter
+        int targetWindow = -1;
+        if (_version == 6 && ops.Length > 2)
+            targetWindow = ops[2];
+
+        string? diagnostic = _trueColourManager.SetTrueColour(fg, bg);
+        if (diagnostic != null)
+            _blorbWarnings.Add(diagnostic);
+
+        // Update V6 window properties 16/17 (true colours) and 11 (colour data)
+        if (_v6Windows != null)
+        {
+            var w = targetWindow >= 0
+                ? _v6Windows.GetWindow(targetWindow)
+                : _v6Windows.Current;
+
+            w.TrueForeground = _trueColourManager.TrueForeground;
+            w.TrueBackground = _trueColourManager.TrueBackground;
+
+            int fgNum = _trueColourManager.TrueColourToNumber(
+                _trueColourManager.TrueForeground);
+            int bgNum = _trueColourManager.TrueColourToNumber(
+                _trueColourManager.TrueBackground);
+            w.ColourData = (bgNum << 8) | fgNum;
+        }
+
+        // Also update ScreenStyleOps colour state
+        int fgColour = _trueColourManager.TrueColourToNumber(
+            _trueColourManager.TrueForeground);
+        int bgColour = _trueColourManager.TrueColourToNumber(
+            _trueColourManager.TrueBackground);
+        _screenStyleOps.SetColour(fgColour, bgColour);
     }
 
     /// <summary>
