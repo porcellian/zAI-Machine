@@ -1390,7 +1390,7 @@ Support PNG, JPEG, and Rect placeholders.
 
 ---
 
-### 12.2 — Image Scaling and Resolution System
+### 12.2 — Image Scaling and Resolution System ✅
 
 Blorb's resolution/scaling system. Scalable images scale based on the
 Elbow Room Factor (ERF).
