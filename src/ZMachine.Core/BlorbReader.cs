@@ -26,6 +26,12 @@ public class BlorbReader
     public BlorbPalette? Palette { get; private set; }
 
     /// <summary>
+    /// Parsed resolution data from the 'Reso' chunk, or null if absent.
+    /// Blorb "The Resolution Chunk" — image scaling via ERF.
+    /// </summary>
+    public ResolutionInfo? Resolution { get; private set; }
+
+    /// <summary>
     /// Resource release number from the 'RelN' chunk, or 0 if absent.
     /// Blorb "The Release Number Chunk" — passed to @picture_data 0.
     /// </summary>
@@ -163,6 +169,7 @@ public class BlorbReader
         var offsetToChunk = BuildOffsetMap(form);
         reader.ParseRIdx(form.Chunks[0], offsetToChunk);
         reader.ParsePalette(form);
+        reader.ParseResolution(form);
         reader.ParseMetadata(form);
 
         return reader;
@@ -277,6 +284,64 @@ public class BlorbReader
                 $"Plte chunk has illegal length {data.Length} " +
                 "(expected 1 or a positive multiple of 3).");
         }
+    }
+
+    /// <summary>
+    /// Parses the optional 'Reso' (resolution) chunk for image scaling.
+    /// Blorb "The Resolution Chunk" — 24-byte header + 28 bytes per entry.
+    /// </summary>
+    private void ParseResolution(IffForm form)
+    {
+        var reso = form.GetChunk("Reso");
+        if (reso == null) return;
+
+        byte[] data = reso.Data;
+        if (data.Length < 24)
+        {
+            _warnings.Add($"Reso chunk too short ({data.Length} bytes, need 24).");
+            return;
+        }
+
+        int px = ReadInt32BE(data, 0);
+        int py = ReadInt32BE(data, 4);
+        int minx = ReadInt32BE(data, 8);
+        int miny = ReadInt32BE(data, 12);
+        int maxx = ReadInt32BE(data, 16);
+        int maxy = ReadInt32BE(data, 20);
+
+        if (px <= 0 || py <= 0)
+        {
+            _warnings.Add($"Reso standard size must be non-zero (got {px}×{py}).");
+            return;
+        }
+
+        var entries = new Dictionary<int, ImageScalingEntry>();
+        int offset = 24;
+        while (offset + 28 <= data.Length)
+        {
+            int number = ReadInt32BE(data, offset);
+            entries[number] = new ImageScalingEntry
+            {
+                StandardNum = ReadInt32BE(data, offset + 4),
+                StandardDen = ReadInt32BE(data, offset + 8),
+                MinNum = ReadInt32BE(data, offset + 12),
+                MinDen = ReadInt32BE(data, offset + 16),
+                MaxNum = ReadInt32BE(data, offset + 20),
+                MaxDen = ReadInt32BE(data, offset + 24),
+            };
+            offset += 28;
+        }
+
+        Resolution = new ResolutionInfo
+        {
+            StandardWidth = px,
+            StandardHeight = py,
+            MinWidth = minx,
+            MinHeight = miny,
+            MaxWidth = maxx,
+            MaxHeight = maxy,
+            Entries = entries,
+        };
     }
 
     /// <summary>

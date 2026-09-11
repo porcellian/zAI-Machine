@@ -31,6 +31,17 @@ public class PictureManager : IPictureProvider, IDisposable
         _theme = theme;
     }
 
+    /// <summary>
+    /// Current window dimensions used for ERF calculation.
+    /// Updated when the window resizes.
+    /// </summary>
+    public int WindowWidth { get; set; }
+
+    /// <summary>
+    /// Current window height used for ERF calculation.
+    /// </summary>
+    public int WindowHeight { get; set; }
+
     /// <inheritdoc />
     public bool HasPictures => _blorb != null && _blorb.PictureCount > 0;
 
@@ -56,6 +67,25 @@ public class PictureManager : IPictureProvider, IDisposable
 
     /// <inheritdoc />
     public (int Width, int Height) GetPictureSize(int number)
+    {
+        if (_blorb == null || !_blorb.HasResource(BlorbUsage.Picture, number))
+            return (0, 0);
+
+        var raw = GetRawSize(number);
+        if (raw.Width == 0 && raw.Height == 0)
+            return (0, 0);
+
+        // Blorb "The Resolution Chunk" — report scaled size via @picture_data
+        return ImageScaler.ComputeScaledSize(
+            raw.Width, raw.Height,
+            WindowWidth, WindowHeight,
+            _blorb.Resolution, number);
+    }
+
+    /// <summary>
+    /// Gets the raw (unscaled) dimensions of a picture resource.
+    /// </summary>
+    internal (int Width, int Height) GetRawSize(int number)
     {
         if (_sizeCache.TryGetValue(number, out var cached))
             return cached;
@@ -92,7 +122,9 @@ public class PictureManager : IPictureProvider, IDisposable
         if (bitmap == null)
             return false;
 
-        _renderer.DrawImage(x, y, bitmap, bitmap.Width, bitmap.Height);
+        // Blorb "The Resolution Chunk" — draw at scaled size
+        var (w, h) = GetPictureSize(number);
+        _renderer.DrawImage(x, y, bitmap, w, h);
         _renderer.Refresh();
         return true;
     }

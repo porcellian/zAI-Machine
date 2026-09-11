@@ -3542,3 +3542,84 @@ picture opcodes in the Z-Machine interpreter:
 - Nonexistent: has/size/draw/placeholder all fail gracefully (4)
 - IPictureProvider: implements interface, release default (2)
 - Dispose: no throw after use (1)
+
+---
+
+### Task 12.2 — Image Scaling and Resolution System
+
+**Date**: 2026-09-11
+
+#### Steps Taken
+
+1. **Created `ImageScaling.cs` in Core** with three types:
+   - `ResolutionInfo` — holds standard/min/max window sizes and per-image entries
+     from the Blorb 'Reso' chunk.
+   - `ImageScalingEntry` — struct with standard/min/max ratio fractions
+     (numerator/denominator pairs). Computed properties: `StandardRatio`,
+     `MinRatio?`, `MaxRatio?`, `IsFixed` (min == max, ERF ignored).
+   - `ImageScaler` — static class with `ComputeERF()`, `ComputeRatio()`,
+     `ComputeScaledSize()`.
+
+2. **Updated `BlorbReader`** to parse the optional 'Reso' chunk:
+   - Added `Resolution` property (`ResolutionInfo?`).
+   - `ParseResolution()` reads the 24-byte header (px, py, minx, miny, maxx,
+     maxy) and 28-byte per-image entries (number + 3 ratio pairs).
+   - Validates standard size is non-zero; logs warning and skips on failure.
+
+3. **Updated `PictureManager`**:
+   - Added `WindowWidth`/`WindowHeight` properties for ERF calculation.
+   - Refactored `GetPictureSize()` to return scaled dimensions via
+     `ImageScaler.ComputeScaledSize()`, delegating raw size lookup to a
+     new `GetRawSize()` internal method.
+   - Updated `DrawPicture()` to draw at the scaled size rather than raw
+     bitmap dimensions.
+   - `ErasePicture()` already called `GetPictureSize()` so it automatically
+     uses scaled dimensions.
+   - Raw-size cache (`_sizeCache`) remains valid across window resizes since
+     it caches intrinsic pixel sizes; scaling is computed on the fly.
+
+4. **Wrote 36 tests** in `ImageScalingTests.cs`:
+   - `ImageScalingEntry` properties: standard/min/max ratio computation,
+     null for 0/0, `IsFixed` detection (9 tests).
+   - `ImageScaler.ComputeERF`: exact match, double, half, wider/taller
+     constraint, zero standard (6 tests).
+   - `ImageScaler.ComputeRatio`: no limits, clamp to min, clamp to max,
+     fixed ignores ERF, non-unit standard (5 tests).
+   - `ImageScaler.ComputeScaledSize`: no reso, no entry, double window,
+     minimum 1px, fixed ratio (5 tests).
+   - BlorbReader Reso parsing: header only, with entry, multiple entries,
+     zero standard warning, no reso chunk (5 tests).
+   - PictureManager integration: no reso = raw, with reso = scaled, window
+     resize changes size, image without entry = raw, fixed ratio ignores
+     window, rect scaled (6 tests).
+
+#### Design Decisions
+
+- **Raw size cache separate from scaling**: `_sizeCache` stores only intrinsic
+  pixel dimensions. Scaled sizes are computed on every `GetPictureSize()` call
+  using the current window dimensions. This avoids cache invalidation complexity
+  while keeping bitmap decode costs amortized.
+
+- **ImageScaler as a static class**: The scaling math is pure — it takes
+  dimensions and resolution info, returns scaled dimensions. No state needed,
+  so a static class keeps the API simple and testable.
+
+- **Ratio fractions vs pre-computed doubles**: Kept the raw numerator/denominator
+  pairs from the Blorb chunk and added computed properties. This preserves full
+  precision for the 0/0 = "no limit" sentinel while still providing convenient
+  double accessors.
+
+#### Spec References
+
+- Blorb "The Resolution Chunk" — 'Reso' chunk format, ERF formula, ratio
+  clamping rules, fixed-ratio detection.
+- Blorb spec: standard window size (px,py) must be non-zero; min/max of 0
+  means "no limit"; per-image entries are 28 bytes each.
+
+**Test Coverage (36 tests):**
+- ImageScalingEntry: ratio computation, null sentinel, IsFixed (9)
+- ComputeERF: exact, double, half, constrained by width/height, zero (6)
+- ComputeRatio: unclamped, clamped min/max, fixed, non-unit standard (5)
+- ComputeScaledSize: no reso, no entry, double, minimum, fixed (5)
+- BlorbReader Reso parsing: header, entries, warning, absent (5)
+- PictureManager scaling: raw fallback, scaled, resize, no entry, fixed, rect (6)
