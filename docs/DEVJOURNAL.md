@@ -3623,3 +3623,105 @@ picture opcodes in the Z-Machine interpreter:
 - ComputeScaledSize: no reso, no entry, double, minimum, fixed (5)
 - BlorbReader Reso parsing: header, entries, warning, absent (5)
 - PictureManager scaling: raw fallback, scaled, resize, no entry, fixed, rect (6)
+
+---
+
+### Task 12.3 — Sound Resource Loading and Playback
+
+**Date**: 2026-09-11
+
+#### Steps Taken
+
+1. **Created `ISoundEngine` interface in Core** — decouples the interpreter from
+   audio libraries, following the same pattern as `IPictureProvider`. Methods:
+   `PrepareSound`, `PlaySound`, `StopSound`, `UnloadSound`, `StopAll`,
+   `GetChannel`. Includes `SoundChannel` enum (None/Effect/Music) for the
+   dual-channel model.
+
+2. **Created `IAudioBackend` interface in IO** — thin abstraction for actual
+   audio output (`LoadSound`, `Play`, `Stop`, `Unload`, `UnloadAll`,
+   `OnPlaybackFinished` event). Concrete implementations will wrap
+   platform-specific libraries (NAudio, SDL2, OpenAL).
+
+3. **Created `NullAudioBackend`** — silent backend that accepts all operations
+   but produces no sound. Includes `SimulateFinished()` for testing callbacks.
+
+4. **Created `SoundManager` in IO** — implements `ISoundEngine` with full
+   dual-channel logic:
+   - Classifies sounds by Blorb format: AIFF → Effect, MOD/SONG/OGGV → Music.
+   - Effects interrupt effects, music interrupts music, no cross-interruption.
+   - Volume mapping: 255 → 8 (loudest), otherwise clamped 1–8.
+   - V5+ repeats: 0 treated as 1, value passed through to backend.
+   - V3 repeats: reads Blorb 'Loop' chunk (0 = loop forever → 0xFF).
+   - Callback routing: fires `OnCallback` only on natural finish, not on
+     manual stop or interruption by another sound.
+
+5. **Added 'Loop' chunk parsing to BlorbReader** — `ParseLoop()` reads 8-byte
+   entries (number + repeats). `LoopInfo` property exposes the dictionary.
+
+6. **Removed stale `ISoundEngine.cs` from IO project** — leftover from a
+   previous attempt that conflicted with the authoritative Core interface.
+
+7. **Wired `@sound_effect` opcode (VAR:21) in ZMachine.cs**:
+   - Added `_soundEngine` field and `SoundEngine` property.
+   - `ExecuteSoundEffect()` handles all 4 actions: prepare (1), play (2),
+     stop (3), stop+unload (4).
+   - Operand 3 encodes volume (low byte) and repeats (high byte).
+   - Operand 4 is the callback routine address.
+
+8. **Wrote 34 tests** using a `MockAudioBackend` that records all calls:
+   - No Blorb: all operations are no-ops (3).
+   - Channel classification: AIFF=Effect, OGGV=Music, MOD=Music,
+     nonexistent=None (4).
+   - Dual-channel: effect interrupts effect, music interrupts music,
+     no cross-interruption (4).
+   - Volume: 255 mapped to 8, normal values passed through (2).
+   - V5 repeats: 0→1, value passed (2).
+   - Callbacks: fired on natural finish, not on stop, not on interruption,
+     not when address=0 (4).
+   - Stop/Unload: specific number, zero=all, unload stops+frees (5).
+   - V3 Loop chunk: play once, loop forever, no entry=play once (3).
+   - BlorbReader Loop parsing: present, absent (2).
+   - PrepareSound: loads data, nonexistent=no-op (2).
+   - Interface contract, Dispose behavior (2).
+
+#### Design Decisions
+
+- **Three-layer architecture (ISoundEngine → SoundManager → IAudioBackend)**:
+  Core defines the interface, SoundManager in IO implements the channel logic
+  and Blorb integration, IAudioBackend provides a seam for swapping audio
+  libraries without touching any game logic.
+
+- **Channel classification by format, not resource number**: Per Blorb spec,
+  the channel depends on storage format (AIFF = sampled effect, MOD/Ogg =
+  music). This is an acknowledged spec ugliness where behavior depends on
+  data format, but it's what the standard requires.
+
+- **Callback via event, not direct routine call**: SoundManager raises
+  `OnCallback` with the routine address. The host wires this to the
+  interpreter's `CallRoutine` to keep SoundManager decoupled from the
+  execution engine.
+
+#### Spec References
+
+- ZSpec S9 — sound effects, @sound_effect opcode format.
+- ZSpec11 "@sound_effect" — V5 repeats are total plays, callback semantics,
+  @sound_effect 0 3/4 stops all, dual-channel model.
+- ZSpec11 "Volume guidelines" — volume 255 = loudest, 1-8 scale.
+- Blorb "Sound Resource Chunks" — AIFF, OGGV, MOD, SONG formats.
+- Blorb "The Looping Chunk" — V3 loop control, 8-byte entries.
+- Blorb "Z-Machine Compatibility Issues" — dual-channel model, effects
+  and music as separate channels.
+
+**Test Coverage (34 tests):**
+- No Blorb: no-op behavior (3)
+- Channel classification: AIFF, OGGV, MOD, nonexistent (4)
+- Dual-channel model: same-channel interrupt, no cross-interrupt (4)
+- Volume mapping: 255→8, normal clamping (2)
+- V5 repeats: zero→one, passthrough (2)
+- Callbacks: natural finish, stop, interruption, zero address (4)
+- Stop/Unload: specific, zero=all, unload behavior (5)
+- V3 Loop chunk: once, forever, no entry (3)
+- BlorbReader Loop parsing: present, absent (2)
+- PrepareSound: load, nonexistent (2)
+- Interface and dispose (2)

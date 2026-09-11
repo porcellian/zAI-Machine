@@ -32,6 +32,14 @@ public class BlorbReader
     public ResolutionInfo? Resolution { get; private set; }
 
     /// <summary>
+    /// Looping data from the 'Loop' chunk, keyed by sound number.
+    /// Value is the repeat count: 1 = play once, 0 = loop forever.
+    /// Null if no 'Loop' chunk present.
+    /// Blorb "The Looping Chunk" — V3 only; V5+ uses @sound_effect repeats.
+    /// </summary>
+    public IReadOnlyDictionary<int, int>? LoopInfo { get; private set; }
+
+    /// <summary>
     /// Resource release number from the 'RelN' chunk, or 0 if absent.
     /// Blorb "The Release Number Chunk" — passed to @picture_data 0.
     /// </summary>
@@ -170,6 +178,7 @@ public class BlorbReader
         reader.ParseRIdx(form.Chunks[0], offsetToChunk);
         reader.ParsePalette(form);
         reader.ParseResolution(form);
+        reader.ParseLoop(form);
         reader.ParseMetadata(form);
 
         return reader;
@@ -342,6 +351,34 @@ public class BlorbReader
             MaxHeight = maxy,
             Entries = entries,
         };
+    }
+
+    /// <summary>
+    /// Parses the optional 'Loop' chunk for V3 sound looping.
+    /// Blorb "The Looping Chunk" — 8-byte entries (number + repeats).
+    /// V5+ ignores this; @sound_effect repeats parameter takes precedence.
+    /// </summary>
+    private void ParseLoop(IffForm form)
+    {
+        var loop = form.GetChunk("Loop");
+        if (loop == null) return;
+
+        byte[] data = loop.Data;
+        if (data.Length < 8 || data.Length % 8 != 0)
+        {
+            _warnings.Add($"Loop chunk has invalid length {data.Length} (expected multiple of 8).");
+            return;
+        }
+
+        var entries = new Dictionary<int, int>();
+        for (int offset = 0; offset + 8 <= data.Length; offset += 8)
+        {
+            int number = ReadInt32BE(data, offset);
+            int repeats = ReadInt32BE(data, offset + 4);
+            entries[number] = repeats;
+        }
+
+        LoopInfo = entries;
     }
 
     /// <summary>
