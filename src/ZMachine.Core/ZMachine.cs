@@ -33,6 +33,7 @@ public class Interpreter
     private ISoundEngine? _soundEngine;
     private V6WindowManager? _v6Windows;
     private TrueColourManager? _trueColourManager;
+    private MouseState _mouseState = new();
     private int _version;
     private bool _running;
     private readonly List<string> _blorbWarnings = new();
@@ -85,6 +86,13 @@ public class Interpreter
     /// </summary>
     /// <remarks>ZSpec11 "@set_true_colour", "Colour numbers".</remarks>
     public TrueColourManager? TrueColours => _trueColourManager;
+
+    /// <summary>
+    /// Mouse state for <c>@read_mouse</c> and mouse click input.
+    /// The GUI host updates this with current position and button state.
+    /// </summary>
+    /// <remarks>ZSpec11 "@read_mouse", "Mouse clicks".</remarks>
+    public MouseState Mouse => _mouseState;
 
     /// <summary>
     /// The loaded Blorb resource file, or null if no Blorb was loaded.
@@ -912,6 +920,8 @@ public class Interpreter
             case 22: // read_char (store)
             {
                 int ch = _inputStream.ReadChar();
+                if (ch == 254 || ch == 253)
+                    _mouseState.WriteClickToHeader(_memory);
                 StoreAndAdvance(ref inst, (ushort)ch);
                 break;
             }
@@ -1062,6 +1072,10 @@ public class Interpreter
                 break;
             case 22: // mouse_window window
                 _v6Windows?.SetMouseWindow((short)ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 23: // read_mouse array
+                _mouseState.WriteToArray(_memory, ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
             default:
@@ -1312,10 +1326,14 @@ public class Interpreter
         }
 
         int maxLen = _memory.ReadByte(ops[0]);
-        var (text, _) = _inputStream.ReadLine(maxLen);
+        var (text, terminating) = _inputStream.ReadLine(maxLen);
 
         ushort parseBuffer = inst.OperandCount >= 2 ? ops[1] : (ushort)0;
         int termChar = _readHandler.ProcessRead(text, ops[0], parseBuffer);
+
+        // ZSpec11 "Mouse co-ordinates" — write click position to header
+        if (terminating == 254 || terminating == 253)
+            _mouseState.WriteClickToHeader(_memory);
 
         if (_version >= 5)
             StoreAndAdvance(ref inst, (ushort)termChar);

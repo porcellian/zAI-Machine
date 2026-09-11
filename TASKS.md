@@ -1519,7 +1519,7 @@ ZSpec11 "@set_colour", ZSpec11 "Header Extension"
 
 ---
 
-### 13.3 — Mouse Input
+### 13.3 — Mouse Input ✅
 
 Mouse clicks during input generate ZSCII codes. `@read_mouse` reads
 current state in real time.
