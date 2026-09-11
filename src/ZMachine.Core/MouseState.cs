@@ -61,20 +61,27 @@ public class MouseState
     }
 
     /// <summary>
-    /// Writes the mouse click coordinates to the header bytes used during
-    /// <c>@read</c> / <c>@read_char</c> input.
-    /// ZSpec11 "Mouse co-ordinates" — header words at $24 (y) and $26 (x)
-    /// for V5, or click coordinates for V6.
+    /// Writes the mouse click coordinates to the header extension table
+    /// when a mouse click terminates <c>@read</c> / <c>@read_char</c>.
+    /// ZSpec S11 — extension table word 1 = X, word 2 = Y.
+    /// ZSpec11 "Mouse co-ordinates" — coordinates relative to (1,1).
     /// </summary>
     /// <remarks>
-    /// ZSpec S8.4 — In V5+, when a mouse click terminates input, the
-    /// interpreter writes y to header word $24 and x to header word $26.
-    /// Despite TASKS.md referencing $26/$27 as bytes, the spec uses words.
+    /// The extension table address is at base header word $36. If no
+    /// extension table exists or it has fewer than 2 words, the write
+    /// is silently skipped.
     /// </remarks>
     public void WriteClickToHeader(Memory memory)
     {
-        memory.WriteWord(0x24, (ushort)Y);
-        memory.WriteWord(0x26, (ushort)X);
+        int extAddr = memory.ReadWord(0x36);
+        if (extAddr == 0) return;
+
+        int wordCount = memory.ReadWord(extAddr);
+        // ZSpec S11 — word 1 = X, word 2 = Y
+        if (wordCount >= 1)
+            memory.WriteWord(extAddr + 2, (ushort)X);
+        if (wordCount >= 2)
+            memory.WriteWord(extAddr + 4, (ushort)Y);
     }
 
     /// <summary>

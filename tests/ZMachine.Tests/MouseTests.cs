@@ -23,6 +23,29 @@ public class MouseTests
         return mem;
     }
 
+    /// <summary>
+    /// Creates a Memory with a header extension table at $0100 that has
+    /// at least 2 words for mouse coordinates.
+    /// </summary>
+    private static Memory CreateMemoryWithExtension()
+    {
+        var data = new byte[1024];
+        data[0] = 5;
+        data[0x0E] = 0x02; // static base at $0200
+
+        // Header extension table at $0100
+        int extAddr = 0x0100;
+        data[0x36] = (byte)(extAddr >> 8);
+        data[0x37] = (byte)(extAddr & 0xFF);
+        // Word 0: number of further words = 6
+        data[extAddr] = 0x00;
+        data[extAddr + 1] = 0x06;
+
+        var mem = new Memory();
+        mem.LoadStory(data);
+        return mem;
+    }
+
     #region MouseState — Position and Buttons
 
     /// <summary>
@@ -133,22 +156,63 @@ public class MouseTests
     #region MouseState — WriteClickToHeader
 
     /// <summary>
-    /// Verifies that WriteClickToHeader writes the mouse position to
-    /// header words $24 (y) and $26 (x).
-    /// ZSpec11 "Mouse co-ordinates" — coordinates written to header
-    /// when mouse click terminates input.
+    /// Verifies that WriteClickToHeader writes the mouse position to the
+    /// header extension table: word 1 = X, word 2 = Y.
+    /// ZSpec S11 — extension table layout; ZSpec11 "Mouse co-ordinates".
     /// </summary>
     [Fact]
-    public void WriteClickToHeader_WritesPositionToHeader()
+    public void WriteClickToHeader_WritesToExtensionTable()
     {
-        var mem = CreateMemory();
+        var mem = CreateMemoryWithExtension();
         var mouse = new MouseState();
         mouse.SetPosition(30, 75);
 
         mouse.WriteClickToHeader(mem);
 
-        Assert.Equal(30, mem.ReadWord(0x24));
-        Assert.Equal(75, mem.ReadWord(0x26));
+        int extAddr = mem.ReadWord(0x36);
+        Assert.Equal(75, mem.ReadWord(extAddr + 2));  // word 1 = X
+        Assert.Equal(30, mem.ReadWord(extAddr + 4));  // word 2 = Y
+    }
+
+    /// <summary>
+    /// Verifies that WriteClickToHeader does not clobber base header
+    /// fields at $24 (screen height) or $26 (font size).
+    /// </summary>
+    [Fact]
+    public void WriteClickToHeader_DoesNotClobberBaseHeader()
+    {
+        var mem = CreateMemoryWithExtension();
+        // Set known values at $24 and $26
+        mem.WriteWord(0x24, 0xABCD);
+        mem.WriteByte(0x26, 0x08); // font width
+        mem.WriteByte(0x27, 0x0C); // font height
+
+        var mouse = new MouseState();
+        mouse.SetPosition(50, 120);
+        mouse.WriteClickToHeader(mem);
+
+        Assert.Equal(0xABCD, mem.ReadWord(0x24));
+        Assert.Equal(0x08, mem.ReadByte(0x26));
+        Assert.Equal(0x0C, mem.ReadByte(0x27));
+    }
+
+    /// <summary>
+    /// Verifies that WriteClickToHeader is a no-op when no header
+    /// extension table exists (word at $36 = 0).
+    /// </summary>
+    [Fact]
+    public void WriteClickToHeader_NoExtensionTable_NoOp()
+    {
+        var mem = CreateMemory(); // no extension table
+        var mouse = new MouseState();
+        mouse.SetPosition(50, 120);
+
+        // Should not throw or write anywhere dangerous
+        mouse.WriteClickToHeader(mem);
+
+        // Base header fields untouched
+        Assert.Equal(0, mem.ReadWord(0x24));
+        Assert.Equal(0, mem.ReadByte(0x26));
     }
 
     #endregion
