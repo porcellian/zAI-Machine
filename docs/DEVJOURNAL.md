@@ -3725,3 +3725,86 @@ picture opcodes in the Z-Machine interpreter:
 - BlorbReader Loop parsing: present, absent (2)
 - PrepareSound: load, nonexistent (2)
 - Interface and dispose (2)
+
+---
+
+## Task 13.1 — V6 Window System
+
+**Date**: 2026-09-11
+
+### Overview
+
+Implemented the V6 window system per ZSpec S8.8 and ZSpec11
+"Version 6 windows". V6 supports 8 independent windows (0–7),
+each with 18 properties covering position, size, cursor, margins,
+styling, font, attributes, and true-colour information.
+
+### Design Decisions
+
+**Two-class model**: `V6Window` holds the 18-property data model
+with `GetProperty`/`SetProperty` indexed access and attribute
+convenience properties. `V6WindowManager` holds the 8-window array
+and dispatches all V6 window opcodes. This separates data from
+coordination logic.
+
+**Pixel-based coordinates**: V6 windows use pixel coordinates
+throughout. The manager's constructor takes screen dimensions in
+pixels and font size. `Init()` computes pixel dimensions from
+character-cell counts × font size read from header bytes 0x26/0x27.
+
+**Read-only true colours (properties 16–17)**: `SetProperty` returns
+false for indices 16–17 and `PutWindProp` silently ignores writes,
+per the ZSpec11 note that these are read-only via `@get_wind_prop`.
+
+**Attribute bits**: Bit 0=wrapping, 1=scrolling, 2=transcript,
+3=buffered. `WindowStyle` supports three operations: set (replace),
+set bits (OR), clear bits (AND NOT).
+
+**SplitWindow V6**: Resizes windows 0 and 1 only; window 1 gets the
+specified lines × fontHeight at the top, window 0 fills below.
+Does not affect windows 2–7.
+
+**ScrollWindow**: A rendering-layer operation; the core records the
+request but actual pixel scrolling is delegated to the IScreen
+implementation.
+
+### New EXT Opcodes Wired
+
+- EXT:8 @set_margins — left, right, window
+- EXT:16 @move_window — window, y, x
+- EXT:17 @window_size — window, height, width
+- EXT:18 @window_style — window, flags, operation
+- EXT:19 @get_wind_prop — window, property → result (store)
+- EXT:20 @put_wind_prop — window, property, value
+- EXT:21 @scroll_window — window, pixels
+- EXT:22 @mouse_window — window
+
+Also wired V6-specific behavior for VAR:10 (@split_window) and
+VAR:11 (@set_window) to use V6WindowManager when `_v6Windows != null`.
+
+### Spec References
+
+- ZSpec S8.8 — 8 windows, 18 properties, attribute bits.
+- ZSpec11 "Version 6 windows" — all windows identical except defaults.
+- ZSpec11 "@get_wind_prop" — properties 16/17 read-only.
+- ZSpec11 "@split_window" — V6 manipulates windows 0 and 1.
+- ZSpec11 "@window_style" — operation modes 0/1/2.
+
+### Test Coverage (46 tests)
+
+- V6Window property access: get all 18, out-of-range (4)
+- V6Window writable/read-only SetProperty (4)
+- V6Window defaults: cursor, font, number (3)
+- V6Window attribute bits: wrapping, scrolling, transcript, buffered, preservation (5)
+- V6WindowManager initialization: 8 windows, window 0 defaults, window 1 defaults,
+  windows 2–7 defaults, font size, colours, selected/mouse window (8)
+- SetWindow: valid, out-of-range (3)
+- MoveWindow: position update (1)
+- WindowSize: dimension update (1)
+- WindowStyle: set/OR/clear operations (3)
+- GetWindProp/PutWindProp: read, write, read-only ignored (3)
+- SetMargins: left and right (1)
+- SetMouseWindow: normal, -1 any window (2)
+- SplitWindow: resize 0/1, zero lines, other windows unaffected (3)
+- GetWindow bounds: out-of-range returns window 0 (3)
+- Disassembler mnemonics for EXT:16–22 (2, inline in existing tests)
