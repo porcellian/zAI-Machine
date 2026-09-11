@@ -417,6 +417,25 @@ public class SoundManagerTests
     }
 
     /// <summary>
+    /// Volume 0 means "not specified" (operand low byte absent or
+    /// zero), treated as default = loudest, mapped to 8.
+    /// </summary>
+    [Fact]
+    public void Volume_Zero_MappedTo8()
+    {
+        byte[] aiff = CreateFakeAiff();
+        byte[] blorb = BuildSoundBlorb((1, "FORM", aiff));
+        var reader = BlorbReader.Load(blorb);
+        var backend = new MockAudioBackend();
+        using var mgr = CreateManager(reader, backend);
+
+        mgr.PlaySound(1, 0, 1, 0);
+
+        Assert.Single(backend.Played);
+        Assert.Equal(8, backend.Played[0].Volume);
+    }
+
+    /// <summary>
     /// ZSpec11 "Volume guidelines" — volume values 1–8 are
     /// passed through without modification.
     /// </summary>

@@ -93,8 +93,9 @@ public class SoundManager : ISoundEngine, IDisposable
             actualRepeats = GetV3Repeats(number);
         }
 
-        // ZSpec11 "Volume guidelines" — 255 = loudest (mapped to 8)
-        int mappedVolume = volume == 255 ? 8 : Math.Clamp(volume, 1, 8);
+        // ZSpec11 "Volume guidelines" — 255 = loudest; 0 means "default"
+        // which is also loudest (operand low byte 0 = not specified).
+        int mappedVolume = (volume == 255 || volume == 0) ? 8 : Math.Clamp(volume, 1, 8);
 
         if (channel == SoundChannel.Effect)
         {

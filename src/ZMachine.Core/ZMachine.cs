@@ -1071,9 +1071,6 @@ public class Interpreter
                 int repeats = (volumeRepeats >> 8) & 0xFF;
                 ushort callback = ops.Length > 3 ? ops[3] : (ushort)0;
 
-                if (volume == 0) volume = 8;
-                if (repeats == 0 && _version >= 5) repeats = 1;
-
                 _soundEngine.PlaySound(number, volume, repeats, callback);
                 break;
             }
