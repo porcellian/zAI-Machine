@@ -85,6 +85,23 @@ public class MouseState
     }
 
     /// <summary>
+    /// Returns whether a click at the current mouse position should be
+    /// delivered as input, considering the <c>@mouse_window</c> setting.
+    /// In V5 (no window manager) all clicks are delivered. In V6, clicks
+    /// outside the designated mouse window are suppressed.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec11 "Mouse clicks" — clicks outside the mouse window are
+    /// ignored for input. <c>@mouse_window -1</c> accepts any window.
+    /// </remarks>
+    public bool ShouldDeliverClick(V6WindowManager? windowManager)
+    {
+        if (windowManager == null)
+            return true;
+        return windowManager.IsClickInMouseWindow(Y, X);
+    }
+
+    /// <summary>
     /// Returns the ZSCII code for a mouse click event.
     /// ZSpec11 "Mouse clicks" — V5: always 254. V6: 254 for single/first
     /// click, 253 for second of double-click.

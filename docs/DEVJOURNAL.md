@@ -3902,8 +3902,9 @@ complexity — the GUI just sets properties on the object.
 
 **Realtime @read_mouse**: Per ZSpec11, `@read_mouse` reads the
 *current* mouse position, even outside the mouse window. The state
-is whatever the GUI host last wrote. No filtering by mouse window
-is done in the core — that's an input-layer concern.
+is whatever the GUI host last wrote. `V6WindowManager.IsClickInMouseWindow`
+checks whether a click falls within the designated mouse window, and
+`MouseState.ShouldDeliverClick` wraps this for the input layer.
 
 **Click header coordinates**: When `@read` or `@read_char` terminates
 with ZSCII 254 (single/first click) or 253 (second of double, V6),
@@ -3933,4 +3934,6 @@ Buttons use natural platform ordering (bit 0 = primary, bit 1 = secondary).
   non-V6 always 254 (5)
 - Negative position values allowed (1)
 - Button bits individually readable (1)
+- Mouse window filtering: no manager (V5), inside, outside,
+  -1 any window, changed target, boundary cases (7)
 - Disassembler mnemonic: EXT:23 = read_mouse (2, inline)

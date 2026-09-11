@@ -329,4 +329,123 @@ public class MouseTests
     }
 
     #endregion
+
+    #region Mouse Window Filtering
+
+    /// <summary>
+    /// Verifies that ShouldDeliverClick returns true when no window
+    /// manager exists (V5 — no mouse window concept).
+    /// </summary>
+    [Fact]
+    public void ShouldDeliverClick_NoWindowManager_AlwaysTrue()
+    {
+        var mouse = new MouseState();
+        mouse.SetPosition(100, 200);
+
+        Assert.True(mouse.ShouldDeliverClick(null));
+    }
+
+    /// <summary>
+    /// Verifies that clicks inside the designated mouse window are delivered.
+    /// ZSpec11 "Mouse clicks" — clicks within the mouse window are accepted.
+    /// </summary>
+    [Fact]
+    public void ShouldDeliverClick_InsideMouseWindow_True()
+    {
+        var mgr = new V6WindowManager(640, 400, 8, 12);
+        // Window 1 defaults to Y=1, X=1, Width=640, Height=0
+        // Resize it to have actual area
+        mgr.WindowSize(1, 100, 640);
+
+        var mouse = new MouseState();
+        mouse.SetPosition(50, 300); // inside window 1
+
+        Assert.True(mouse.ShouldDeliverClick(mgr));
+    }
+
+    /// <summary>
+    /// Verifies that clicks outside the designated mouse window are suppressed.
+    /// ZSpec11 "Mouse clicks" — clicks outside are ignored for input.
+    /// </summary>
+    [Fact]
+    public void ShouldDeliverClick_OutsideMouseWindow_False()
+    {
+        var mgr = new V6WindowManager(640, 400, 8, 12);
+        mgr.WindowSize(1, 100, 640);
+        // Mouse window defaults to 1 (Y=1, X=1, H=100, W=640)
+
+        var mouse = new MouseState();
+        mouse.SetPosition(200, 300); // below window 1
+
+        Assert.False(mouse.ShouldDeliverClick(mgr));
+    }
+
+    /// <summary>
+    /// Verifies that mouse window -1 accepts clicks anywhere.
+    /// EXT:22 — -1 means any window.
+    /// </summary>
+    [Fact]
+    public void ShouldDeliverClick_MouseWindowMinusOne_AlwaysTrue()
+    {
+        var mgr = new V6WindowManager(640, 400, 8, 12);
+        mgr.SetMouseWindow(-1);
+
+        var mouse = new MouseState();
+        mouse.SetPosition(999, 999); // way outside any window
+
+        Assert.True(mouse.ShouldDeliverClick(mgr));
+    }
+
+    /// <summary>
+    /// Verifies that IsClickInMouseWindow checks the correct window
+    /// after SetMouseWindow changes the target.
+    /// </summary>
+    [Fact]
+    public void IsClickInMouseWindow_AfterChange_ChecksNewWindow()
+    {
+        var mgr = new V6WindowManager(640, 400, 8, 12);
+        // Set up window 3 at a specific location
+        mgr.MoveWindow(3, 100, 100);
+        mgr.WindowSize(3, 50, 50);
+        mgr.SetMouseWindow(3);
+
+        // Inside window 3
+        Assert.True(mgr.IsClickInMouseWindow(120, 120));
+        // Outside window 3
+        Assert.False(mgr.IsClickInMouseWindow(50, 50));
+    }
+
+    /// <summary>
+    /// Verifies that a click exactly at the window boundary (top-left corner)
+    /// is considered inside.
+    /// </summary>
+    [Fact]
+    public void IsClickInMouseWindow_AtTopLeftBoundary_Inside()
+    {
+        var mgr = new V6WindowManager(640, 400, 8, 12);
+        mgr.MoveWindow(2, 50, 100);
+        mgr.WindowSize(2, 80, 200);
+        mgr.SetMouseWindow(2);
+
+        Assert.True(mgr.IsClickInMouseWindow(50, 100));
+    }
+
+    /// <summary>
+    /// Verifies that a click at the bottom-right boundary (exclusive) is
+    /// considered outside — window extends from (Y, X) to (Y+H-1, X+W-1).
+    /// </summary>
+    [Fact]
+    public void IsClickInMouseWindow_AtBottomRightBoundary_Outside()
+    {
+        var mgr = new V6WindowManager(640, 400, 8, 12);
+        mgr.MoveWindow(2, 50, 100);
+        mgr.WindowSize(2, 80, 200);
+        mgr.SetMouseWindow(2);
+
+        // Y+H = 130, X+W = 300 — these are just past the edge
+        Assert.False(mgr.IsClickInMouseWindow(130, 100));
+        Assert.False(mgr.IsClickInMouseWindow(50, 300));
+    }
+
+    #endregion
 }
