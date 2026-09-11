@@ -1477,7 +1477,7 @@ ZSpec11 "@get_wind_prop"
 
 ---
 
-### 13.2 — True Color and Transparency
+### 13.2 — True Color and Transparency ✅
 
 Standard 1.1 true color via `@set_true_colour` and V6 transparency.
 

@@ -3808,3 +3808,72 @@ VAR:11 (@set_window) to use V6WindowManager when `_v6Windows != null`.
 - SplitWindow: resize 0/1, zero lines, other windows unaffected (3)
 - GetWindow bounds: out-of-range returns window 0 (3)
 - Disassembler mnemonics for EXT:16–22 (2, inline in existing tests)
+
+---
+
+## Task 13.2 — True Color and Transparency
+
+**Date**: 2026-09-11
+
+### Overview
+
+Implemented Standard 1.1 true colour support per ZSpec11
+"@set_true_colour" and "Colour numbers". Covers 15-bit sRGB colour
+values, the `@set_true_colour` opcode (EXT:13), standard-to-true-colour
+equivalences (11 standard colours 2–12), non-standard colour tracking
+(colours 16–255 with 240-slot ring buffer), V6 window property updates
+(properties 11, 16, 17), and V6 transparency handling.
+
+### Design Decisions
+
+**TrueColourManager class**: Central manager in Core that handles all
+true colour logic: magic values (-1 default, -2 current, -4 transparent),
+standard colour equivalences, non-standard colour allocation, and default
+colours from the header extension table. Decoupled from ScreenStyleOps
+to keep colour number tracking separate from rendering callbacks.
+
+**Non-standard colour ring buffer**: Uses a 240-slot ring buffer per
+ZSpec11 spec recommendation. Colours 16–255 map to the last 240 distinct
+non-standard true colours used. After exhaustion, slots are reused from
+the beginning. `TrueColourToNumber` checks existing entries before
+allocating a new slot.
+
+**ExecuteSetColour wrapper**: Extracted `@set_colour` dispatch into
+`ExecuteSetColour` so it can update V6 window true colour properties
+(16/17) alongside the standard colour data (property 11). Standard
+colour numbers are mapped to their true colour equivalences for the
+window properties.
+
+**Transparent foreground diagnostic**: Both `@set_colour` with fg=15 and
+`@set_true_colour` with fg=-4 produce a diagnostic warning per ZSpec11's
+note that transparent is only valid as background. The colour is not
+applied as foreground.
+
+**Header extension defaults**: TrueColourManager reads true default
+foreground/background from header extension words 3/4
+(ZSpec11 "Header Extension" words 5/6). Falls back to white ($7FFF) on
+black ($0000) if not specified or zero.
+
+### Spec References
+
+- ZSpec11 "@set_true_colour" — 15-bit sRGB, magic values -1 to -4.
+- ZSpec11 "Colour numbers" — standard colours 2–12 with gamma-adjusted
+  Amiga equivalences, non-standard tracking 16–255.
+- ZSpec11 "@set_colour" — colour 15 = transparent (V6 bg only).
+- ZSpec11 "Header Extension" — words 5/6 true default colours, Flags 3
+  bit 0 transparency request.
+- ZSpec11 "@get_wind_prop" — properties 16/17 true colours, read-only.
+
+### Test Coverage (39 tests)
+
+- Standard colour equivalences: all 11 values (2–12), out-of-range (4)
+- SetTrueColour basic: positive values, default (-1), current (-2) (3)
+- Transparency: -4 background V6, transparent fg diagnostic, -4 non-V6 ignored (3)
+- Header extension defaults: custom defaults, zero fallback (2)
+- Flags 3: transparency requested, not requested (2)
+- Non-standard colour tracking: standard match, non-standard >= 16,
+  same colour same number, different colours different numbers,
+  240 wrap-around, reverse mapping (6)
+- NumberToTrueColour: standard, transparent (2)
+- TrueColourToNumber: transparent → 15 (1)
+- IsTransparent: -4 true, others false (4)
