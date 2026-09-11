@@ -3407,3 +3407,73 @@ authoritative ZSpec11 gamma-adjusted Amiga V6 colour set. The theme provides:
 - Renderer: init, Amiga colours, GuiScreen 80×25 (3)
 - True Colour Verification: 11 Theory cases cross-checking 15-bit→8-bit
   conversion against palette (11, included in total above)
+
+---
+
+### Task 11.9 — Theme Selection UI and Preferences
+
+**Date:** 2026-09-08
+
+#### What Was Done
+
+Implemented the theme selection and user preferences system, completing
+Phase 11. Three new components:
+
+1. **ThemeRegistry** (`src/ZMachine.IO/ThemeRegistry.cs`) — central registry
+   of all 7 vintage themes. Provides `GetAll()` for enumeration and
+   `GetByName()` for lookup by display name (case-insensitive). Default
+   theme is C64 Classic.
+
+2. **UserPreferences** (`src/ZMachine.IO/UserPreferences.cs`) — JSON-backed
+   preferences model persisted to `~/.zai-machine/preferences.json`. Stores
+   selected theme, CRT effect toggles (scanlines, curvature, bloom), sound
+   volume, and window geometry. Handles missing files (returns defaults),
+   corrupt JSON (returns defaults), and partial JSON (merges with defaults).
+   `ResolveTheme()` maps the saved theme name to an `ITheme` via the registry.
+
+3. **MainWindow integration** (`src/ZMachine.App/`) — updated to load
+   preferences on startup, resolve the saved theme, and build a dynamic
+   Options → Theme submenu from `ThemeRegistry.GetAll()`. `SwitchTheme()`
+   reinitializes the renderer with the new theme's config, redraws, and
+   saves the preference. The current theme is marked with a bullet prefix.
+   `LoadAndRunStory()` now uses the selected theme instead of a bare
+   `ThemeConfig()`.
+
+#### Design Decisions
+
+- **ThemeRegistry as static class, not DI.** All themes are statically known
+  at compile time with no runtime plugins. A static registry with `GetAll()`
+  and `GetByName()` is the simplest correct design. If plugin themes are
+  needed later, this can become an interface.
+
+- **Preferences in ZMachine.IO, not ZMachine.App.** Both the preferences
+  model and the theme registry live in ZMachine.IO so they're testable
+  without an Avalonia dependency. Only the menu-building code lives in the
+  App project.
+
+- **Graceful fallback on load failure.** `UserPreferences.Load()` catches
+  `JsonException` and `IOException`, returning defaults. `ResolveTheme()`
+  falls back to `ThemeRegistry.Default` for unknown theme names. A user
+  with a corrupt preferences file gets a working app, not a crash.
+
+- **NativeMenu API for theme items.** Avalonia's `NativeMenuItem` is not a
+  `Control`, so `FindControl<T>()` can't locate it. Instead, we traverse
+  the `NativeMenu.GetMenu(this)` attached property to find the Options
+  submenu and insert theme items programmatically.
+
+#### Spec References
+
+- ZSpec S8 — Screen model: theme determines visual presentation.
+
+**Test Coverage (34 tests):**
+- ThemeRegistry Enumeration: 7 themes, all expected names, all ITheme,
+  all valid configs, default C64 Classic (5)
+- ThemeRegistry Lookup: 7 by-name lookups, case-insensitive, null for
+  unknown (9)
+- Preferences Defaults: all default values correct (1)
+- JSON Round-Trip: save/load, creates directory, valid JSON, missing file,
+  corrupt JSON, partial JSON (6)
+- Theme Resolution: finds saved, falls back for unknown, all 7 resolvable (9)
+- Theme Switching: renderer dims change, new palette used, GuiScreen
+  dimensions update (3)
+- Full Workflow: save → load → resolve → create config end-to-end (1)
