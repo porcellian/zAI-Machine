@@ -4353,3 +4353,58 @@ trace capability, and wrote stress tests with random inputs.
 
 All 1602 tests pass (10 new). Czech conformance: 0 failures.
 Stress tests: all 5 stories survive 100 random inputs.
+
+---
+
+### Task 14.4 — Documentation and Release Packaging
+
+**Date**: 2026-09-12
+
+#### Summary
+
+Created user-facing documentation and release packaging for the project.
+This is the final deliverable set before the development journal export
+(Task 14.5).
+
+#### Changes
+
+1. **README.md** — comprehensive rewrite:
+   - Project description, feature list (Z-Machine 1–8, Quetzal, Blorb,
+     7 themes, debugger, trace, structured errors)
+   - Screenshot table with C64 Classic and Modern C64
+   - Build instructions (clone, build, test, run)
+   - Release build `dotnet publish` commands for Windows x64, macOS
+     ARM64/x64, and Linux x64 (self-contained single-file)
+   - Usage guide with supported file format table
+   - Theme selection table (all 7 themes)
+   - Project structure tree
+   - Spec references and supported version table (V1–V8)
+   - Testing section (1600+ unit tests, Czech, Infocom, stress)
+   - Known limitations (V6 without Blorb, save/restore stubs, sound,
+     timed input)
+
+2. **CHANGELOG.md** — full project history:
+   - All 14 phases with per-task entries
+   - Covers every implemented feature from Phase 1 (project foundation)
+     through Phase 14 (testing, polish, release)
+   - Technical detail: opcode names, class names, spec references
+
+3. **LICENSE** — MIT license file
+
+4. **Release builds** — documented via README.md `dotnet publish`
+   commands for three platforms. No custom publish profiles needed;
+   the single-line commands are self-contained.
+
+#### Design Decisions
+
+- **CHANGELOG structure**: Organized by phase and task rather than
+  semantic versioning. The project has no released versions yet, so
+  everything sits under `[Unreleased]`. Each phase gets its own heading
+  for scannability; each task is a sub-heading with bullet points.
+
+- **No publish profiles (.pubxml)**: Single-line `dotnet publish`
+  commands in the README are simpler and more transparent than XML
+  profile files. Users can copy-paste the exact command they need.
+
+- **MIT license**: Standard permissive license appropriate for an
+  open-source hobby/educational project.
