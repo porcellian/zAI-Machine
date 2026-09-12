@@ -19,10 +19,10 @@ public class CzechConformanceTests
     /// Runs czech.z5 to completion and verifies zero failures.
     /// Czech 0.8 runs 406 opcode tests plus 19 print format checks.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_AllTestsPass()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -37,10 +37,10 @@ public class CzechConformanceTests
     /// <summary>
     /// Verifies that czech.z5 runs all expected tests without crashing.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_RunsToCompletion()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -54,10 +54,10 @@ public class CzechConformanceTests
     /// <summary>
     /// Verifies no ERROR lines appear in the czech.z5 output.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_NoErrors()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -71,10 +71,10 @@ public class CzechConformanceTests
     /// Verifies the Standard 1.1 version header bytes at $32/$33.
     /// ZSpec11 — header bytes $32/$33 should be $01/$01.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_StandardVersionHeader()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -90,10 +90,10 @@ public class CzechConformanceTests
     /// Verifies that the interpreter number and version are set.
     /// ZSpec S11 — interpreter number at $1E, version at $1F.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_InterpreterIdentification()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -110,10 +110,10 @@ public class CzechConformanceTests
     /// ZSpec S11 — Flags 1 bits 0 (color), 2 (bold), 3 (italic),
     /// 4 (fixed-space) should be set for a compliant V5 interpreter.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_CapabilityFlagsSet()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -130,10 +130,10 @@ public class CzechConformanceTests
     /// Verifies that screen dimensions are set to non-zero values.
     /// ZSpec S11 — screen height at $20, width at $21.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_ScreenDimensionsSet()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -149,7 +149,7 @@ public class CzechConformanceTests
     /// Verifies that all opcode test sections complete successfully.
     /// Each section should appear in the output with dots (no ERROR lines).
     /// </summary>
-    [Theory]
+    [SkippableTheory]
     [InlineData("Jumps")]
     [InlineData("Variables")]
     [InlineData("Arithmetic ops")]
@@ -161,7 +161,7 @@ public class CzechConformanceTests
     [InlineData("Misc")]
     public void Czech_SectionCompletes(string section)
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
@@ -172,10 +172,10 @@ public class CzechConformanceTests
     /// <summary>
     /// Verifies that print opcode tests produce correct output.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Czech_PrintTests()
     {
-        if (!File.Exists(StoryPath)) return;
+        Skip.IfNot(File.Exists(StoryPath), "czech.z5 not found in stories/");
 
         var harness = TestHarness.Run(StoryPath, [],
             instructionLimit: 100_000_000);
