@@ -4012,3 +4012,89 @@ support for remaining EXT opcodes.
 - Screen redraw bit: sets Flags 2 bit 2, preserves other bits (2)
 - Buffer screen mode: defaults to 0, set returns previous, -1 does not
   change stored mode, round-trip 0→1→0 (4)
+
+---
+
+## Task 13.5 — Adaptive Palette (Legacy V6 Games)
+
+**Date**: 2026-09-11
+**Branch**: `feature/13.5-adaptive-palette`
+
+### Summary
+
+Implemented the Blorb APal chunk parsing and the adaptive palette
+management system for legacy V6 games (Zork Zero, Arthur). Non-adaptive
+pictures update a 16-entry "Current Palette" when drawn; adaptive
+pictures use the Current Palette instead of their own PLTE chunk.
+
+### Implementation Steps
+
+1. **APal chunk parsing** (`BlorbReader.cs`): Added `ParseAPal` method
+   that reads 4-byte big-endian picture resource numbers from the 'APal'
+   chunk. Exposes `HasAdaptivePalette` (true if chunk exists, even if
+   empty) and `AdaptivePictures` (IReadOnlySet<int> of resource numbers).
+   Generates a warning if the chunk length is not a multiple of 4.
+
+2. **AdaptivePaletteManager** (`AdaptivePaletteManager.cs`): New class
+   tracking the Current Palette — a 16-entry sRGB table (indices 2–15
+   significant per spec). Methods:
+   - `IsAdaptive(int)` — checks if a picture is in the APal list
+   - `UpdateFromNonAdaptivePicture(plte)` — copies PLTE into palette
+   - `GetCurrentPalette()` — returns a copy (16 entries)
+   - `GetColor(int)` — single entry access
+   - `Reset()` — clears palette to black
+   - `PaletteVersion` — monotonic counter for cache invalidation
+
+3. **Factory method** (`BlorbReader.CreateAdaptivePaletteManager()`):
+   Returns a configured manager from parsed APal data, or null if no
+   APal chunk is present.
+
+### Design Decisions
+
+- **16-entry array with 0/1 unused**: Spec says "For ease of
+  implementation, this will probably be a 16-entry table, whose first
+  two entries are not significant." Followed this recommendation for
+  direct index mapping.
+
+- **PaletteVersion for cache invalidation**: The spec warns that
+  "adaptive images that are cached are still appropriate for the
+  Current Palette when plotted." The version counter lets the renderer
+  compare against a cached version to detect staleness without
+  comparing palette arrays.
+
+- **Empty APal handling**: Shogun and Journey have empty APal chunks
+  to "signal that optimizations may be possible because of the limited
+  nature of the graphics." `HasAdaptivePalette` captures this signal
+  separately from having actual adaptive picture numbers.
+
+- **Partial palette updates**: Per spec, "If its palette has fewer
+  than 16 entries, then only those entries of the Current Palette are
+  changed." This is implemented with `Math.Min(plteColors.Length, 16)`.
+
+- **Colour space note**: The spec says PLTE colours should be
+  "transformed through the PNG's gAMA, cHRM and sRGB/iCCP chunks to
+  produce correct sRGB values." The manager accepts pre-transformed
+  sRGB values — the actual PNG decoding and gamma correction is the
+  renderer's responsibility when extracting PLTE data.
+
+### Spec References
+
+- Blorb "The Adaptive Palette Chunk" — full APal semantics.
+- Blorb "The Adaptive Palette Chunk" — current palette: 14 entries
+  (indices 2–15), partial update rules.
+- Blorb "The Adaptive Palette Chunk" — empty APal (Shogun, Journey).
+
+### Test Coverage (21 tests)
+
+- BlorbReader APal parsing: no chunk, empty chunk, single entry,
+  multiple entries, odd-length warning (5)
+- CreateAdaptivePaletteManager: null when no APal, non-null when present (2)
+- IsAdaptive: listed pictures true, unlisted false, empty set (2)
+- Current palette: default all black, full 16-entry update, partial
+  update (preserves unchanged), GetColor specific index,
+  GetColor out-of-range (5)
+- PaletteVersion: starts at 0, increments on update, Reset clears
+  and increments (2)
+- Draw workflow: non-adaptive then adaptive, two non-adaptive
+  replacements, GetCurrentPalette returns copy (3)
+- Edge cases: out-of-range indices -1/16/100 (2, via Theory)
