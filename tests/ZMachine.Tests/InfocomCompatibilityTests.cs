@@ -202,27 +202,22 @@ public class InfocomCompatibilityTests
     #region V6 Stories
 
     /// <summary>
-    /// Journey (V6) — tests V6 initialization. V6 games require Blorb
-    /// picture resources for full operation; without them, the game
-    /// crashes during startup when writing screen configuration.
-    /// This test verifies the V6 init path runs and documents the
-    /// expected failure mode without Blorb resources.
+    /// Journey (V6) — without Blorb picture resources, the game crashes
+    /// during startup with a static-memory write error. This test
+    /// verifies that crash is the expected out-of-bounds write, not an
+    /// opcode or decoding failure.
     /// </summary>
     [SkippableFact]
-    public void Journey_LoadsV6Header()
+    public void Journey_CrashesWithoutBlorb()
     {
         var path = Path.Combine(StoriesDir, "Journey", "STORY.DATA.z6");
         Skip.IfNot(File.Exists(path), "Journey/STORY.DATA.z6 not found in stories/ (gitignored)");
 
-        // V6 games crash without Blorb picture resources — verify the
-        // crash is a known static-memory write (not an opcode failure)
         var result = RunStory(path, ["quit", "y"]);
 
-        if (result.Crashed)
-        {
-            Assert.Contains("static", result.Error!,
-                StringComparison.OrdinalIgnoreCase);
-        }
+        Assert.True(result.Crashed, "V6 game should crash without Blorb resources");
+        Assert.Contains("static", result.Error!,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     #endregion
