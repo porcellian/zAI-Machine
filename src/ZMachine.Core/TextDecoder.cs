@@ -59,6 +59,10 @@ public class TextDecoder
     private readonly char[] _a2;
     private readonly int _abbreviationTableAddress;
 
+    // ZSpec S3.3 — 96 abbreviation slots (3 banks × 32 entries).
+    // Cached on first use to avoid re-decoding on every reference.
+    private readonly string?[] _abbreviationCache = new string?[96];
+
     /// <summary>
     /// Creates a text decoder for the given story file.
     /// </summary>
@@ -166,10 +170,8 @@ public class TextDecoder
                 if (i + 1 >= zchars.Count) break;
                 byte next = zchars[++i];
                 int entryIndex = (zc - 1) * 32 + next;
-                int tableEntry = _abbreviationTableAddress + entryIndex * 2;
-                // ZSpec S3.3 — Entry is a word address; abbreviation is at word_address × 2.
-                int abbrAddress = _memory.ReadWord(tableEntry) * 2;
-                var (abbrText, _) = DecodeZStringInternal(abbrAddress, isAbbreviation: true);
+                string abbrText = _abbreviationCache[entryIndex]
+                    ?? CacheAbbreviation(entryIndex);
                 sb.Append(abbrText);
                 RevertAlphabet(ref currentAlphabet, lockedAlphabet);
                 continue;
@@ -269,6 +271,27 @@ public class TextDecoder
         if (_version == 1) return false;
         if (_version == 2) return zc == 1;
         return zc >= 1 && zc <= 3;
+    }
+
+    /// <summary>
+    /// Decodes and caches an abbreviation by its slot index (0–95).
+    /// </summary>
+    private string CacheAbbreviation(int entryIndex)
+    {
+        int tableEntry = _abbreviationTableAddress + entryIndex * 2;
+        int abbrAddress = _memory.ReadWord(tableEntry) * 2;
+        var (text, _) = DecodeZStringInternal(abbrAddress, isAbbreviation: true);
+        _abbreviationCache[entryIndex] = text;
+        return text;
+    }
+
+    /// <summary>
+    /// Clears the abbreviation cache. Call after @restart to pick up
+    /// any changes to the abbreviation table in dynamic memory.
+    /// </summary>
+    public void ClearAbbreviationCache()
+    {
+        Array.Clear(_abbreviationCache);
     }
 
     /// <summary>

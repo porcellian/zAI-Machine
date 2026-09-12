@@ -101,7 +101,8 @@ public static class VariableMemoryOps
     /// <remarks>ZSpec S15 — @loadw array word-index → (result)</remarks>
     public static ushort LoadWord(Memory memory, ushort array, ushort wordIndex)
     {
-        return memory.ReadWord(array + 2 * wordIndex);
+        int address = array + 2 * (int)wordIndex;
+        return memory.ReadWord(address);
     }
 
     /// <summary>
@@ -110,7 +111,8 @@ public static class VariableMemoryOps
     /// <remarks>ZSpec S15 — @loadb array byte-index → (result)</remarks>
     public static ushort LoadByte(Memory memory, ushort array, ushort byteIndex)
     {
-        return memory.ReadByte(array + byteIndex);
+        int address = array + (int)byteIndex;
+        return memory.ReadByte(address);
     }
 
     /// <summary>
@@ -119,7 +121,8 @@ public static class VariableMemoryOps
     /// <remarks>ZSpec S15 — @storew array word-index value</remarks>
     public static void StoreWord(Memory memory, ushort array, ushort wordIndex, ushort value)
     {
-        memory.WriteWord(array + 2 * wordIndex, value);
+        int address = array + 2 * (int)wordIndex;
+        memory.WriteWord(address, value);
     }
 
     /// <summary>
@@ -128,7 +131,8 @@ public static class VariableMemoryOps
     /// <remarks>ZSpec S15 — @storeb array byte-index value</remarks>
     public static void StoreByte(Memory memory, ushort array, ushort byteIndex, byte value)
     {
-        memory.WriteByte(array + byteIndex, value);
+        int address = array + (int)byteIndex;
+        memory.WriteByte(address, value);
     }
 
     /// <summary>
