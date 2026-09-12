@@ -845,7 +845,7 @@ so only entries 0–31 are used. V1 has no abbreviation support at all.
 
 ---
 
-## Task 3.3 — ZSCII Character Set and Unicode Output
+### Task 3.3 — ZSCII Character Set and Unicode Output
 
 **Date**: 2026-09-06
 **Branch**: `feature/3.3-zscii-unicode`
@@ -940,7 +940,7 @@ entries as needed.
 
 ---
 
-## Task 3.4 — Text Encoding for Dictionary Lookup
+### Task 3.4 — Text Encoding for Dictionary Lookup
 
 **Date**: 2026-09-06
 **Branch**: `feature/3.4-text-encoding`
@@ -1800,7 +1800,7 @@ Fixed by walking properties to find a 2-byte one first.
 
 ---
 
-## Task 6.4 — Text Output Opcodes
+### Task 6.4 — Text Output Opcodes
 
 **Date**: 2026-09-07
 **Branch**: `feature/6.4-text-output-opcodes`
@@ -1868,7 +1868,7 @@ memory.
 
 ---
 
-## Task 6.5 — Control Flow Opcodes
+### Task 6.5 — Control Flow Opcodes
 
 **Date**: 2026-09-07
 **Branch**: `feature/6.5-control-flow-opcodes`
@@ -1938,7 +1938,7 @@ incorrectly.
 
 ---
 
-## Task 6.6 — V5+ Screen and Style Opcodes
+### Task 6.6 — V5+ Screen and Style Opcodes
 
 **Date**: 2026-09-07
 **Branch**: `feature/6.6-screen-style-opcodes`
@@ -3564,6 +3564,8 @@ Phase 11. Three new components:
 
 ---
 
+## Phase 12: Graphics and Sound
+
 ### Task 12.1 — Picture Resource Loading and Display
 
 **Date:** 2026-09-11
@@ -3812,7 +3814,9 @@ picture opcodes in the Z-Machine interpreter:
 
 ---
 
-## Task 13.1 — V6 Window System
+## Phase 13: Standard 1.1 Extensions
+
+### Task 13.1 — V6 Window System
 
 **Date**: 2026-09-11
 
@@ -3895,7 +3899,7 @@ VAR:11 (@set_window) to use V6WindowManager when `_v6Windows != null`.
 
 ---
 
-## Task 13.2 — True Color and Transparency
+### Task 13.2 — True Color and Transparency
 
 **Date**: 2026-09-11
 
@@ -3964,7 +3968,7 @@ black ($0000) if not specified or zero.
 
 ---
 
-## Task 13.3 — Mouse Input
+### Task 13.3 — Mouse Input
 
 **Date**: 2026-09-11
 
@@ -4024,7 +4028,7 @@ Buttons use natural platform ordering (bit 0 = primary, bit 1 = secondary).
 
 ---
 
-## Task 13.4 — Buffer Screen and Remaining EXT Opcodes
+### Task 13.4 — Buffer Screen and Remaining EXT Opcodes
 
 **Date**: 2026-09-11
 **Branch**: `feature/13.4-buffer-screen-remaining-ext`
@@ -4099,7 +4103,7 @@ support for remaining EXT opcodes.
 
 ---
 
-## Task 13.5 — Adaptive Palette (Legacy V6 Games)
+### Task 13.5 — Adaptive Palette (Legacy V6 Games)
 
 **Date**: 2026-09-11
 **Branch**: `feature/13.5-adaptive-palette`
@@ -4187,7 +4191,7 @@ pictures use the Current Palette instead of their own PLTE chunk.
 
 ## Phase 14: Testing, Polish, and Release
 
-## Task 14.1 — Czech Conformance Testing
+### Task 14.1 — Czech Conformance Testing
 
 **Date**: 2026-09-11
 **Branch**: `feature/14.1-czech-conformance`
@@ -4285,7 +4289,7 @@ None. All czech.z5 tests pass with zero failures.
 
 ---
 
-## Task 14.2 — Infocom Story File Compatibility Testing
+### Task 14.2 — Infocom Story File Compatibility Testing
 
 **Date**: 2026-09-11
 **Branch**: `feature/14.2-infocom-compatibility`
@@ -4363,7 +4367,7 @@ Blorb integration path.
 
 ---
 
-## Task 14.3 — Performance Optimization and Error Handling
+### Task 14.3 — Performance Optimization and Error Handling
 
 ### Summary
 
