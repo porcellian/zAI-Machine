@@ -4213,16 +4213,26 @@ All V3, V4, and V5 games boot, display text, accept input, and
 survive extended gameplay. V6 (Journey) fails during startup without
 Blorb picture resources — a known and expected limitation.
 
+### Story File Availability
+
+Only freely distributable stories are committed to the repository:
+- **Committed**: `minizork.z3`, `czech.z5`
+- **Gitignored** (copyrighted): `zork1.z3`, `ballyhoo.z3`, `mind.z4`, `sherlock.z5`, `Journey/`
+
+Tests use `[SkippableFact]`/`[SkippableTheory]` (via `Xunit.SkippableFact`
+package) so missing stories report as **SKIP** in CI rather than silently
+passing. Locally, all stories are present and exercised.
+
 ### Test Matrix
 
-| Story | Version | Loads | Opens | Input | Gameplay | Status |
-|-------|---------|-------|-------|-------|----------|--------|
-| minizork.z3 | V3 | ✅ | ✅ | ✅ | 20 turns | PASS |
-| zork1.z3 | V3 | ✅ | ✅ | ✅ | 6 cmds | PASS |
-| ballyhoo.z3 | V3 | ✅ | ✅ | ✅ | 2 cmds | PASS |
-| mind.z4 | V4 | ✅ | ✅ | ✅ | 8 cmds | PASS |
-| sherlock.z5 | V5 | ✅ | ✅ | ✅ | 8 cmds | PASS |
-| Journey (V6) | V6 | ✅ | ❌ | — | — | KNOWN |
+| Story | Version | Committed | Loads | Opens | Input | Gameplay | Status |
+|-------|---------|-----------|-------|-------|-------|----------|--------|
+| minizork.z3 | V3 | ✅ | ✅ | ✅ | ✅ | 20 turns | PASS |
+| zork1.z3 | V3 | ❌ | ✅ | ✅ | ✅ | 6 cmds | PASS (local) |
+| ballyhoo.z3 | V3 | ❌ | ✅ | ✅ | ✅ | 2 cmds | PASS (local) |
+| mind.z4 | V4 | ❌ | ✅ | ✅ | ✅ | 8 cmds | PASS (local) |
+| sherlock.z5 | V5 | ❌ | ✅ | ✅ | ✅ | 8 cmds | PASS (local) |
+| Journey (V6) | V6 | ❌ | ✅ | ❌ | — | — | KNOWN |
 
 ### V6 Known Issue
 

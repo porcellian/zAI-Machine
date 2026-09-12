@@ -22,11 +22,11 @@ public class InfocomCompatibilityTests
     /// Minizork (V3) — minimal Zork I, good for quick smoke testing.
     /// Tests: loads, displays opening text, accepts "look" command.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Minizork_BootsAndPlays()
     {
         var path = Path.Combine(StoriesDir, "minizork.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "minizork.z3 not found in stories/");
 
         var result = RunStory(path, ["look", "inventory", "quit", "y"]);
 
@@ -38,11 +38,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// Minizork (V3) — verifies opening text contains recognizable content.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Minizork_DisplaysOpeningText()
     {
         var path = Path.Combine(StoriesDir, "minizork.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "minizork.z3 not found in stories/");
 
         var result = RunStory(path, ["look", "quit", "y"]);
 
@@ -54,11 +54,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// Zork I (V3) — full game, tests boot and basic commands.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Zork1_BootsAndPlays()
     {
         var path = Path.Combine(StoriesDir, "zork1.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "zork1.z3 not found in stories/ (gitignored)");
 
         var result = RunStory(path,
             ["look", "open mailbox", "read leaflet", "go south",
@@ -72,11 +72,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// Ballyhoo (V3) — circus-themed Infocom game.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Ballyhoo_BootsAndPlays()
     {
         var path = Path.Combine(StoriesDir, "ballyhoo.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "ballyhoo.z3 not found in stories/ (gitignored)");
 
         var result = RunStory(path, ["look", "inventory", "quit", "y"]);
 
@@ -89,11 +89,11 @@ public class InfocomCompatibilityTests
     /// V3 regression test — runs minizork.z3 with 20 turns of gameplay
     /// to verify stability under extended play.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void V3Regression_Minizork_20Turns()
     {
         var path = Path.Combine(StoriesDir, "minizork.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "minizork.z3 not found in stories/");
 
         var commands = new[]
         {
@@ -119,11 +119,11 @@ public class InfocomCompatibilityTests
     /// A Mind Forever Voyaging (V4) — tests V4 features including
     /// timed input capability.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void MindForeverVoyaging_BootsAndPlays()
     {
         var path = Path.Combine(StoriesDir, "mind.z4");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "mind.z4 not found in stories/ (gitignored)");
 
         var result = RunStory(path, ["look", "inventory", "quit", "y"]);
 
@@ -135,11 +135,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// V4 regression test — runs mind.z4 with several turns.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void V4Regression_Mind_BasicPlay()
     {
         var path = Path.Combine(StoriesDir, "mind.z4");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "mind.z4 not found in stories/ (gitignored)");
 
         var commands = new[]
         {
@@ -162,11 +162,11 @@ public class InfocomCompatibilityTests
     /// Sherlock (V5) — tests V5 features including upper window
     /// and extended opcodes.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Sherlock_BootsAndPlays()
     {
         var path = Path.Combine(StoriesDir, "sherlock.z5");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "sherlock.z5 not found in stories/ (gitignored)");
 
         var result = RunStory(path, ["look", "inventory", "quit", "y"]);
 
@@ -178,11 +178,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// V5 regression test — runs sherlock.z5 with several turns.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void V5Regression_Sherlock_BasicPlay()
     {
         var path = Path.Combine(StoriesDir, "sherlock.z5");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "sherlock.z5 not found in stories/ (gitignored)");
 
         var commands = new[]
         {
@@ -208,11 +208,11 @@ public class InfocomCompatibilityTests
     /// This test verifies the V6 init path runs and documents the
     /// expected failure mode without Blorb resources.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Journey_LoadsV6Header()
     {
         var path = Path.Combine(StoriesDir, "Journey", "STORY.DATA.z6");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "Journey/STORY.DATA.z6 not found in stories/ (gitignored)");
 
         // V6 games crash without Blorb picture resources — verify the
         // crash is a known static-memory write (not an opcode failure)
@@ -233,7 +233,7 @@ public class InfocomCompatibilityTests
     /// Verifies that all available stories load without throwing
     /// during initialization.
     /// </summary>
-    [Theory]
+    [SkippableTheory]
     [InlineData("minizork.z3")]
     [InlineData("zork1.z3")]
     [InlineData("ballyhoo.z3")]
@@ -242,7 +242,7 @@ public class InfocomCompatibilityTests
     public void Story_LoadsSuccessfully(string filename)
     {
         var path = Path.Combine(StoriesDir, filename);
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), $"{filename} not found in stories/");
 
         var result = RunStory(path, ["quit", "y"]);
 
@@ -255,7 +255,7 @@ public class InfocomCompatibilityTests
     /// Verifies that all available stories accept at least one input
     /// command without crashing.
     /// </summary>
-    [Theory]
+    [SkippableTheory]
     [InlineData("minizork.z3")]
     [InlineData("zork1.z3")]
     [InlineData("ballyhoo.z3")]
@@ -264,7 +264,7 @@ public class InfocomCompatibilityTests
     public void Story_AcceptsInput(string filename)
     {
         var path = Path.Combine(StoriesDir, filename);
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), $"{filename} not found in stories/");
 
         var result = RunStory(path, ["look", "quit", "y"]);
 
@@ -280,11 +280,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// Verifies that minizork.z3 produces recognizable Zork content.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Minizork_OutputContainsZorkContent()
     {
         var path = Path.Combine(StoriesDir, "minizork.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "minizork.z3 not found in stories/");
 
         var result = RunStory(path, ["look", "quit", "y"]);
 
@@ -300,11 +300,11 @@ public class InfocomCompatibilityTests
     /// <summary>
     /// Verifies that zork1.z3 displays the opening location description.
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public void Zork1_OutputContainsOpeningText()
     {
         var path = Path.Combine(StoriesDir, "zork1.z3");
-        if (!File.Exists(path)) return;
+        Skip.IfNot(File.Exists(path), "zork1.z3 not found in stories/ (gitignored)");
 
         var result = RunStory(path, ["look", "quit", "y"]);
 
