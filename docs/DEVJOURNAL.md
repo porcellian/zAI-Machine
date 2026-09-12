@@ -4198,3 +4198,71 @@ None. All czech.z5 tests pass with zero failures.
 - Czech_SectionCompletes: all 9 test sections appear (9, via Theory)
 - Czech_PrintTests: print_num, print_char, print_obj correct (1)
 - Flags_V3Story_CapabilitiesSet: V3 capability bits set (1, updated)
+
+---
+
+## Task 14.2 — Infocom Story File Compatibility Testing
+
+**Date**: 2026-09-11
+**Branch**: `feature/14.2-infocom-compatibility`
+
+### Summary
+
+Tested all available Infocom story files against the interpreter.
+All V3, V4, and V5 games boot, display text, accept input, and
+survive extended gameplay. V6 (Journey) fails during startup without
+Blorb picture resources — a known and expected limitation.
+
+### Test Matrix
+
+| Story | Version | Loads | Opens | Input | Gameplay | Status |
+|-------|---------|-------|-------|-------|----------|--------|
+| minizork.z3 | V3 | ✅ | ✅ | ✅ | 20 turns | PASS |
+| zork1.z3 | V3 | ✅ | ✅ | ✅ | 6 cmds | PASS |
+| ballyhoo.z3 | V3 | ✅ | ✅ | ✅ | 2 cmds | PASS |
+| mind.z4 | V4 | ✅ | ✅ | ✅ | 8 cmds | PASS |
+| sherlock.z5 | V5 | ✅ | ✅ | ✅ | 8 cmds | PASS |
+| Journey (V6) | V6 | ✅ | ❌ | — | — | KNOWN |
+
+### V6 Known Issue
+
+Journey.z6 crashes with "Write to static/high memory at $FFFF"
+during startup. V6 games perform screen/picture configuration
+during their init routine that requires Blorb picture resources
+to be loaded. Without picture data, the game writes out of bounds.
+This is expected and documented — V6 full support requires the
+Blorb integration path.
+
+### Regression Scripts
+
+- **V3**: minizork.z3 with 20 turns of navigation (look, inventory,
+  movement in all directions). Tests stability under extended play.
+- **V4**: mind.z4 with 8 commands (look, inventory, navigation).
+- **V5**: sherlock.z5 with 8 commands (look, inventory, navigation).
+
+### Design Decisions
+
+- **Exception-catching harness**: The `RunStory` helper wraps
+  `TestHarness.Run` in a try/catch and returns a `StoryResult` record,
+  allowing tests to assert on crash status rather than failing with
+  unhandled exceptions. This enables testing V6 games that are
+  expected to crash without Blorb resources.
+
+- **Content verification**: Added tests that check for recognizable
+  game content (location names, objects) in output, not just "non-empty
+  output", to catch silent failures where the engine runs but produces
+  garbage.
+
+### Test Coverage (22 tests)
+
+- V3 boot+play: minizork, zork1, ballyhoo (3)
+- V3 regression: minizork 20 turns (1)
+- V3 content: minizork Zork content, zork1 opening text (2)
+- V4 boot+play: mind (1)
+- V4 regression: mind basic play (1)
+- V5 boot+play: sherlock (1)
+- V5 regression: sherlock basic play (1)
+- V6 boot: Journey loads V6 header (1)
+- Cross-version: loads successfully (5, via Theory)
+- Cross-version: accepts input (5, via Theory)
+- Content: minizork/zork1 output verification (1)

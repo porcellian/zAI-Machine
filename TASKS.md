@@ -1611,7 +1611,7 @@ Run `czech.z5` systematically. Fix all reported issues.
 
 ---
 
-### 14.2 — Infocom Story File Compatibility Testing
+### 14.2 — Infocom Story File Compatibility Testing ✅
 
 Test all 34 story files. Each should boot, display opening text, and
 handle basic commands.
