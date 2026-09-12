@@ -87,6 +87,22 @@ public class BlorbReader
     private readonly Dictionary<(string Usage, int Number), string> _resourceDescriptions = new();
 
     /// <summary>
+    /// True if the Blorb file contains an 'APal' chunk (even if empty).
+    /// An empty APal signals palette-changing behaviour is possible
+    /// (Shogun, Journey). Blorb "The Adaptive Palette Chunk".
+    /// </summary>
+    public bool HasAdaptivePalette { get; private set; }
+
+    /// <summary>
+    /// Picture resource numbers listed in the 'APal' chunk. These
+    /// pictures should be rendered using the current palette instead
+    /// of their own PLTE. Empty if no APal chunk or if it is empty
+    /// (Shogun, Journey). Blorb "The Adaptive Palette Chunk".
+    /// </summary>
+    public IReadOnlySet<int> AdaptivePictures => _adaptivePictures;
+    private readonly HashSet<int> _adaptivePictures = new();
+
+    /// <summary>
     /// Number of 'Pict' resources in the index.
     /// Used by the interpreter to set header graphics capability flags.
     /// </summary>
@@ -180,6 +196,7 @@ public class BlorbReader
         reader.ParseResolution(form);
         reader.ParseLoop(form);
         reader.ParseMetadata(form);
+        reader.ParseAPal(form);
 
         return reader;
     }
@@ -423,6 +440,44 @@ public class BlorbReader
         var rdes = form.GetChunk("RDes");
         if (rdes != null)
             ParseResourceDescriptions(rdes);
+    }
+
+    /// <summary>
+    /// Parses the optional 'APal' (adaptive palette) chunk.
+    /// Blorb "The Adaptive Palette Chunk" — list of 4-byte picture
+    /// resource numbers whose palettes should be replaced with the
+    /// current palette at draw time.
+    /// </summary>
+    private void ParseAPal(IffForm form)
+    {
+        var apal = form.GetChunk("APal");
+        if (apal == null) return;
+
+        HasAdaptivePalette = true;
+
+        byte[] data = apal.Data;
+        if (data.Length % 4 != 0)
+        {
+            _warnings.Add(
+                $"APal chunk length {data.Length} is not a multiple of 4.");
+        }
+
+        int count = data.Length / 4;
+        for (int i = 0; i < count; i++)
+        {
+            int number = ReadInt32BE(data, i * 4);
+            _adaptivePictures.Add(number);
+        }
+    }
+
+    /// <summary>
+    /// Creates an <see cref="AdaptivePaletteManager"/> from the parsed
+    /// APal data. Returns null if no APal chunk is present.
+    /// </summary>
+    public AdaptivePaletteManager? CreateAdaptivePaletteManager()
+    {
+        if (!HasAdaptivePalette) return null;
+        return new AdaptivePaletteManager(_adaptivePictures);
     }
 
     /// <summary>

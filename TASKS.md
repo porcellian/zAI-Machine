@@ -1570,7 +1570,7 @@ ZSpec11 "Status line redraw"
 
 ---
 
-### 13.5 — Adaptive Palette (Legacy V6 Games)
+### 13.5 — Adaptive Palette (Legacy V6 Games) ✅
 
 Support the APal chunk for Infocom V6 games (Arthur, Zork Zero) whose
 pictures change colors based on previously-plotted pictures.
