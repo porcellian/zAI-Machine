@@ -384,6 +384,9 @@ public class Disassembler
         20 => "put_wind_prop", 21 => "scroll_window",
         22 => "mouse_window",
         23 => "read_mouse",
+        24 => "make_menu",
+        25 => "picture_table",
+        29 => "buffer_screen",
         _ => $"EXT:{op}"
     };
 
@@ -481,6 +484,7 @@ public class Disassembler
                     case 0: case 1: case 2: case 3: case 4:
                     case 9: case 10: case 12:
                     case 19: // get_wind_prop (store)
+                    case 29: // buffer_screen (store)
                         InstructionDecoder.DecodeStore(_memory, ref inst);
                         break;
                 }

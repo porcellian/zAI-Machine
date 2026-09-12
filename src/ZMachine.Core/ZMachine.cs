@@ -34,6 +34,7 @@ public class Interpreter
     private V6WindowManager? _v6Windows;
     private TrueColourManager? _trueColourManager;
     private MouseState _mouseState = new();
+    private int _bufferScreenMode;
     private int _version;
     private bool _running;
     private readonly List<string> _blorbWarnings = new();
@@ -93,6 +94,21 @@ public class Interpreter
     /// </summary>
     /// <remarks>ZSpec11 "@read_mouse", "Mouse clicks".</remarks>
     public MouseState Mouse => _mouseState;
+
+    /// <summary>
+    /// Sets the "requesting screen redraw" bit (Flags 2, bit 2) in the
+    /// header. The interpreter calls this after a screen resize so the
+    /// game knows to redraw its display.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec11 "Status line redraw" — the interpreter may set this bit
+    /// after resizing the screen; the game should redraw if it sees it.
+    /// </remarks>
+    public void RequestScreenRedraw()
+    {
+        ushort flags2 = _memory.ReadWord(0x10);
+        _memory.WriteWord(0x10, (ushort)(flags2 | 0x0004));
+    }
 
     /// <summary>
     /// The loaded Blorb resource file, or null if no Blorb was loaded.
@@ -984,6 +1000,7 @@ public class Interpreter
         {
             case 0: case 1: case 2: case 3: case 4: case 9: case 10: case 12:
             case 19: // get_wind_prop (store)
+            case 29: // buffer_screen (store)
                 InstructionDecoder.DecodeStore(_memory, ref inst);
                 break;
             case 6: // picture_data — branch only (no store)
@@ -1007,9 +1024,25 @@ public class Interpreter
             case 3: // art_shift
                 StoreAndAdvance(ref inst, ArithmeticOps.ArtShift(ops[0], (short)ops[1]));
                 break;
-            case 4: // set_font
-                StoreAndAdvance(ref inst, _screenStyleOps.SetFont(ops[0]));
+            case 4: // set_font [font] [window] (V6 optional window)
+            {
+                // ZSpec11 "@set_font" — V6 optional window parameter;
+                // -3 = currently selected window.
+                ushort result = _screenStyleOps.SetFont(ops[0]);
+                if (_v6Windows != null && result != 0 && ops.Length > 1)
+                {
+                    var w = (short)ops[1] == -3
+                        ? _v6Windows.Current
+                        : _v6Windows.GetWindow(ops[1]);
+                    w.Font = ops[0];
+                }
+                else if (_v6Windows != null && result != 0)
+                {
+                    _v6Windows.Current.Font = ops[0];
+                }
+                StoreAndAdvance(ref inst, result);
                 break;
+            }
             case 5: // draw_picture pic y x
                 ExecuteDrawPicture(ops);
                 _state.PC = inst.NextAddress;
@@ -1078,6 +1111,17 @@ public class Interpreter
                 _mouseState.WriteToArray(_memory, ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
+            case 29: // buffer_screen mode → result
+            {
+                // ZSpec11 "@buffer_screen" — returns old mode.
+                // -1 forces immediate update without changing mode.
+                int mode = (short)ops[0];
+                ushort oldMode = (ushort)_bufferScreenMode;
+                if (mode >= 0)
+                    _bufferScreenMode = mode;
+                StoreAndAdvance(ref inst, oldMode);
+                break;
+            }
             default:
                 _state.PC = inst.NextAddress;
                 break;
@@ -1169,7 +1213,11 @@ public class Interpreter
         // Update V6 window true colour properties from standard equivalences
         if (_v6Windows != null && _trueColourManager != null)
         {
-            var w = _v6Windows.Current;
+            // V6 optional window parameter (ZSpec11 "@set_colour")
+            var w = (_version == 6 && ops.Length > 2)
+                ? _v6Windows.GetWindow((short)ops[2] == -3
+                    ? _v6Windows.SelectedWindow : ops[2])
+                : _v6Windows.Current;
 
             int resolvedFg = fg == 0 ? _screenStyleOps.ForegroundColor : fg;
             int resolvedBg = bg == 0 ? _screenStyleOps.BackgroundColor : bg;
