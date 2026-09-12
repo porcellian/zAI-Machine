@@ -4276,3 +4276,80 @@ Blorb integration path.
 - Cross-version: loads successfully (5, via Theory)
 - Cross-version: accepts input (5, via Theory)
 - Content: minizork/zork1 output verification (1)
+
+---
+
+## Task 14.3 — Performance Optimization and Error Handling
+
+### Summary
+
+Optimized text decoding performance, added structured error reporting
+with PC/opcode context, hardened memory access, added instruction
+trace capability, and wrote stress tests with random inputs.
+
+### Changes
+
+1. **Abbreviation caching** (`TextDecoder.cs`): Added a 96-entry
+   `string?[]` cache for decoded abbreviations. Each abbreviation is
+   decoded once on first reference and reused thereafter. Cache is
+   cleared on `@restart` since the abbreviation table lives in dynamic
+   memory. This eliminates redundant recursive Z-string decoding —
+   abbreviations are the most frequently referenced Z-strings in
+   typical gameplay.
+
+2. **ZMachineException** (`ZMachineException.cs`): New exception type
+   carrying `PC`, `OpcodeForm`, `OpcodeNumber`, and `IsWarning`.
+   `Step()` now wraps all dispatch exceptions and rethrows as
+   `ZMachineException` with `[$XXXXX Form:N] message` format,
+   providing consistent diagnostic context for any illegal operation.
+
+3. **EXT default branch**: Changed from silently advancing PC to
+   throwing `UnknownOpcode`, making unknown EXT opcodes fatal errors
+   consistent with 2OP/1OP/0OP/VAR dispatch.
+
+4. **VariableMemoryOps address safety**: Explicit `int` casts in
+   `LoadWord`, `LoadByte`, `StoreWord`, `StoreByte` address
+   calculations to prevent silent overflow from `ushort` arithmetic.
+   `Memory.ReadWord`/`WriteByte` already validate the final address.
+
+5. **Instruction trace** (`Interpreter.TraceWriter`): Optional
+   `Action<string>` callback invoked before each instruction with
+   `$XXXXX Form:N` format. Off by default (null). Lightweight
+   alternative to the full `Debugger` class — no disassembly overhead.
+   Also added `InstructionCount` property.
+
+6. **Stress tests** (`StressTests.cs`, 10 tests):
+   - 5 stories × 100 random commands with seed 42 for reproducibility
+   - `ZMachineException` tolerated as expected error class
+   - Czech regression check after performance changes
+   - `ZMachineException` diagnostic format verification
+   - Trace writer integration test
+   - `InstructionCount` tracking test
+   - Abbreviation cache determinism test
+
+### Design Decisions
+
+- **Cache vs. lazy dictionary**: Used a flat `string?[96]` array
+  rather than a `Dictionary<int, string>` — the 96 abbreviation slots
+  are a fixed, small, dense keyspace. Array lookup is O(1) with no
+  hashing overhead.
+
+- **Exception wrapping in Step()**: Catches all non-`ZMachineException`
+  exceptions and wraps them. This means `DivideByZeroException`,
+  `ArgumentOutOfRangeException`, `InvalidOperationException` from
+  Memory, MachineState, etc. all get PC/opcode context without
+  modifying every call site. `ZMachineException` itself passes through
+  unwrapped to avoid double-wrapping.
+
+- **Trace before dispatch**: The trace line is emitted before the
+  instruction executes, so if it crashes, the last trace entry shows
+  where. This matches typical debugger trace semantics.
+
+- **Random seed 42**: Deterministic seed ensures stress tests are
+  reproducible. The 50-command vocabulary covers common Infocom verbs
+  plus some edge cases (save, restore, undo, xyzzy).
+
+### Test Results
+
+All 1602 tests pass (10 new). Czech conformance: 0 failures.
+Stress tests: all 5 stories survive 100 random inputs.

@@ -37,6 +37,7 @@ public class Interpreter
     private int _bufferScreenMode;
     private int _version;
     private bool _running;
+    private int _instructionCount;
     private readonly List<string> _blorbWarnings = new();
 
     /// <summary>The loaded story file memory.</summary>
@@ -122,6 +123,19 @@ public class Interpreter
     /// ZSpec11 "Header capabilities bits".
     /// </summary>
     public IReadOnlyList<string> BlorbWarnings => _blorbWarnings;
+
+    /// <summary>
+    /// Total instructions executed since the last <see cref="Init"/>.
+    /// </summary>
+    public int InstructionCount => _instructionCount;
+
+    /// <summary>
+    /// When set, called after each instruction with a trace line
+    /// containing PC address, opcode form, and opcode number.
+    /// Off by default (null). Set before calling <see cref="Run"/>
+    /// or between <see cref="Step"/> calls.
+    /// </summary>
+    public Action<string>? TraceWriter { get; set; }
 
     /// <summary>
     /// Blorb file extensions recognized for auto-detection.
@@ -414,22 +428,45 @@ public class Interpreter
     }
 
     /// <summary>
-    /// Executes a single instruction at the current PC.
+    /// Executes a single instruction at the current PC. Exceptions from
+    /// illegal operations are wrapped in <see cref="ZMachineException"/>
+    /// with PC address and opcode context.
     /// </summary>
     public void Step()
     {
         var inst = InstructionDecoder.Decode(_memory, _state.PC);
 
-        switch (inst.Form)
+        if (TraceWriter != null)
         {
-            case OpcodeForm.Op2: Dispatch2OP(ref inst); break;
-            case OpcodeForm.Op1: Dispatch1OP(ref inst); break;
-            case OpcodeForm.Op0: Dispatch0OP(ref inst); break;
-            case OpcodeForm.Var: DispatchVAR(ref inst); break;
-            case OpcodeForm.Ext: DispatchEXT(ref inst); break;
-            default:
-                throw new InvalidOperationException(
-                    $"Unknown opcode form at ${inst.Address:X4}");
+            string form = inst.IsExtended ? "EXT" : inst.Form.ToString();
+            TraceWriter($"${inst.Address:X5} {form}:{inst.Opcode}");
+        }
+
+        try
+        {
+            switch (inst.Form)
+            {
+                case OpcodeForm.Op2: Dispatch2OP(ref inst); break;
+                case OpcodeForm.Op1: Dispatch1OP(ref inst); break;
+                case OpcodeForm.Op0: Dispatch0OP(ref inst); break;
+                case OpcodeForm.Var: DispatchVAR(ref inst); break;
+                case OpcodeForm.Ext: DispatchEXT(ref inst); break;
+                default:
+                    throw new InvalidOperationException(
+                        $"Unknown opcode form");
+            }
+
+            _instructionCount++;
+        }
+        catch (ZMachineException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            string formName = inst.IsExtended ? "EXT" : inst.Form.ToString();
+            throw new ZMachineException(
+                ex.Message, inst.Address, formName, inst.Opcode, ex);
         }
     }
 
@@ -783,6 +820,7 @@ public class Interpreter
                 break;
             case 7: // restart
                 _controlFlowOps.Restart();
+                _textDecoder.ClearAbbreviationCache();
                 break;
             case 8: // ret_popped
                 _controlFlowOps.ReturnPopped();
@@ -1136,7 +1174,7 @@ public class Interpreter
                 break;
             }
             default:
-                _state.PC = inst.NextAddress;
+                UnknownOpcode(ref inst);
                 break;
         }
     }
@@ -1436,8 +1474,8 @@ public class Interpreter
     private void UnknownOpcode(ref Instruction inst)
     {
         string formName = inst.IsExtended ? "EXT" : inst.Form.ToString();
-        throw new InvalidOperationException(
-            $"Unknown opcode {formName}:{inst.Opcode} at ${inst.Address:X4}");
+        throw new ZMachineException(
+            "Unknown opcode", inst.Address, formName, inst.Opcode);
     }
 
     #endregion
