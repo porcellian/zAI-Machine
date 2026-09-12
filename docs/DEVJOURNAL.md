@@ -6,6 +6,90 @@ maintained alongside the source code and exported as a PDF at project completion
 
 ---
 
+## Table of Contents
+
+- [Phase 1: Project Foundation](#phase-1-project-foundation)
+  - [1.1 — Solution Structure and Build Configuration](#task-11--solution-structure-and-build-configuration)
+  - [1.2 — Story File Loader and Memory Model](#task-12--story-file-loader-and-memory-model)
+  - [1.3 — Header Parser and Version Detection](#task-13--header-parser-and-version-detection)
+- [Phase 2: Instruction Decoding](#phase-2-instruction-decoding)
+  - [2.1 — Opcode Forms and Operand Type Decoding](#task-21--opcode-forms-and-operand-type-decoding)
+  - [2.2 — Branch and Store Result Mechanics](#task-22--branch-and-store-result-mechanics)
+  - [2.3 — Packed Address Calculations](#task-23--packed-address-calculations)
+  - [2.4 — Stack and Call Frame Model](#task-24--stack-and-call-frame-model)
+- [Phase 3: Text System](#phase-3-text-system)
+  - [3.1 — Z-Character Decoding and Alphabet Tables](#task-31--z-character-decoding-and-alphabet-tables)
+  - [3.2 — Abbreviation Table Expansion](#task-32--abbreviation-table-expansion)
+  - [3.3 — ZSCII Character Set and Unicode Output](#task-33--zscii-character-set-and-unicode-output)
+  - [3.4 — Text Encoding for Dictionary Lookup](#task-34--text-encoding-for-dictionary-lookup)
+- [Phase 4: Object System](#phase-4-object-system)
+  - [4.1 — Object Table and Tree Traversal](#task-41--object-table-and-tree-traversal)
+  - [4.2 — Property System](#task-42--property-system)
+  - [4.3 — Attribute System](#task-43--attribute-system)
+- [Phase 5: I/O and Screen Model](#phase-5-io-and-screen-model)
+  - [5.1 — Text Output Backend](#task-51--text-output-backend-console)
+  - [5.2 — Output Stream Management](#task-52--output-stream-management)
+  - [5.3 — Dictionary and Lexical Analysis](#task-53--dictionary-and-lexical-analysis)
+  - [5.4 — Input System](#task-54--input-system)
+  - [5.5 — Status Line and Window Management](#task-55--status-line-and-window-management-v1v5)
+- [Phase 6: Full Instruction Set](#phase-6-full-instruction-set)
+  - [6.1 — Arithmetic, Logical, and Comparison Opcodes](#task-61--arithmetic-logical-and-comparison-opcodes)
+  - [6.2 — Variable, Memory, and Table Opcodes](#task-62--variable-memory-and-table-opcodes)
+  - [6.3 — Object Manipulation Opcodes](#task-63--object-manipulation-opcodes)
+  - [6.4 — Text Output Opcodes](#task-64--text-output-opcodes)
+  - [6.5 — Control Flow Opcodes](#task-65--control-flow-opcodes)
+  - [6.6 — V5+ Screen and Style Opcodes](#task-66--v5-screen-and-style-opcodes)
+- [Phase 7: Integration](#phase-7-integration)
+  - [7.1 — Main Execution Loop](#task-71--main-execution-loop-and-opcode-dispatch)
+  - [7.2 — Regression Test Harness](#task-72--regression-test-harness)
+- [Phase 8: Developer Tools](#phase-8-developer-tools)
+  - [8.1 — Story File Inspector](#task-81--story-file-inspector)
+  - [8.2 — Object Tree Viewer](#task-82--object-tree-viewer)
+  - [8.3 — Dictionary Viewer](#task-83--dictionary-viewer)
+  - [8.4 — Disassembler](#task-84--disassembler)
+  - [8.5 — Interactive Debugger](#task-85--interactive-debugger)
+- [Phase 9: Save/Restore (Quetzal)](#phase-9-saverestore-quetzal)
+  - [9.1 — IFF Container Format](#task-91--iff-container-format-readerwriter)
+  - [9.2 — Quetzal Save](#task-92--quetzal-save-implementation)
+  - [9.3 — Quetzal Restore and Undo](#task-93--quetzal-restore-and-undo)
+- [Phase 10: Blorb Resource Loading](#phase-10-blorb-resource-loading)
+  - [10.1 — Blorb File Parser and Resource Index](#task-101--blorb-file-parser-and-resource-index)
+  - [10.2 — Story Loading from Blorb and Metadata](#task-102--story-loading-from-blorb-and-metadata)
+  - [10.3 — Blorb Resource Discovery and Header Flags](#task-103--blorb-resource-discovery-and-header-flag-integration)
+- [Phase 11: GUI Framework and Vintage Themes](#phase-11-gui-framework-and-vintage-themes)
+  - [11.1 — Avalonia UI Project Setup](#task-111--avalonia-ui-project-setup-and-rendering-abstraction)
+  - [11.2 — Bitmap Font System](#task-112--bitmap-font-system)
+  - [11.3 — C64 Classic Theme](#task-113--c64-classic-theme)
+  - [11.4 — Modern C64 Theme](#task-114--modern-c64-theme)
+  - [11.5 — Apple II Theme](#task-115--apple-ii-theme)
+  - [11.6 — DOS Monochrome Themes](#task-116--dos-monochrome-themes-green-screen-and-amber-screen)
+  - [11.7 — DOS CGA Color Theme](#task-117--dos-cga-color-theme)
+  - [11.8 — Amiga Theme](#task-118--amiga-theme)
+  - [11.9 — Theme Selection UI and Preferences](#task-119--theme-selection-ui-and-preferences)
+- [Phase 12: Graphics and Sound](#phase-12-graphics-and-sound)
+  - [12.1 — Picture Resource Loading and Display](#task-121--picture-resource-loading-and-display)
+  - [12.2 — Image Scaling and Resolution](#task-122--image-scaling-and-resolution-system)
+  - [12.3 — Sound Resource Playback](#task-123--sound-resource-loading-and-playback)
+- [Phase 13: Standard 1.1 Extensions](#phase-13-standard-11-extensions)
+  - [13.1 — V6 Window System](#task-131--v6-window-system)
+  - [13.2 — True Colour and Transparency](#task-132--true-color-and-transparency)
+  - [13.3 — Mouse Input](#task-133--mouse-input)
+  - [13.4 — Buffer Screen and Remaining EXT Opcodes](#task-134--buffer-screen-and-remaining-ext-opcodes)
+  - [13.5 — Adaptive Palette](#task-135--adaptive-palette-legacy-v6-games)
+- [Phase 14: Testing, Polish, and Release](#phase-14-testing-polish-and-release)
+  - [14.1 — Czech Conformance Testing](#task-141--czech-conformance-testing)
+  - [14.2 — Infocom Story File Compatibility Testing](#task-142--infocom-story-file-compatibility-testing)
+  - [14.3 — Performance Optimization and Error Handling](#task-143--performance-optimization-and-error-handling)
+  - [14.4 — Documentation and Release Packaging](#task-144--documentation-and-release-packaging)
+  - [14.5 — Development Journal (PDF)](#task-145--development-journal-pdf)
+- [Appendix A: Architecture Diagrams](#appendix-a-architecture-diagrams)
+  - [A.1 — Memory Model](#a1--memory-model)
+  - [A.2 — Instruction Pipeline](#a2--instruction-pipeline)
+  - [A.3 — Screen and Rendering Stack](#a3--screen-and-rendering-stack)
+  - [A.4 — Theme Architecture](#a4--theme-architecture)
+
+---
+
 ## Phase 1: Project Foundation
 
 ### Task 1.1 — Solution Structure and Build Configuration
@@ -761,7 +845,7 @@ so only entries 0–31 are used. V1 has no abbreviation support at all.
 
 ---
 
-## Task 3.3 — ZSCII Character Set and Unicode Output
+### Task 3.3 — ZSCII Character Set and Unicode Output
 
 **Date**: 2026-09-06
 **Branch**: `feature/3.3-zscii-unicode`
@@ -856,7 +940,7 @@ entries as needed.
 
 ---
 
-## Task 3.4 — Text Encoding for Dictionary Lookup
+### Task 3.4 — Text Encoding for Dictionary Lookup
 
 **Date**: 2026-09-06
 **Branch**: `feature/3.4-text-encoding`
@@ -1716,7 +1800,7 @@ Fixed by walking properties to find a 2-byte one first.
 
 ---
 
-## Task 6.4 — Text Output Opcodes
+### Task 6.4 — Text Output Opcodes
 
 **Date**: 2026-09-07
 **Branch**: `feature/6.4-text-output-opcodes`
@@ -1784,7 +1868,7 @@ memory.
 
 ---
 
-## Task 6.5 — Control Flow Opcodes
+### Task 6.5 — Control Flow Opcodes
 
 **Date**: 2026-09-07
 **Branch**: `feature/6.5-control-flow-opcodes`
@@ -1854,7 +1938,7 @@ incorrectly.
 
 ---
 
-## Task 6.6 — V5+ Screen and Style Opcodes
+### Task 6.6 — V5+ Screen and Style Opcodes
 
 **Date**: 2026-09-07
 **Branch**: `feature/6.6-screen-style-opcodes`
@@ -3480,6 +3564,8 @@ Phase 11. Three new components:
 
 ---
 
+## Phase 12: Graphics and Sound
+
 ### Task 12.1 — Picture Resource Loading and Display
 
 **Date:** 2026-09-11
@@ -3728,7 +3814,9 @@ picture opcodes in the Z-Machine interpreter:
 
 ---
 
-## Task 13.1 — V6 Window System
+## Phase 13: Standard 1.1 Extensions
+
+### Task 13.1 — V6 Window System
 
 **Date**: 2026-09-11
 
@@ -3811,7 +3899,7 @@ VAR:11 (@set_window) to use V6WindowManager when `_v6Windows != null`.
 
 ---
 
-## Task 13.2 — True Color and Transparency
+### Task 13.2 — True Color and Transparency
 
 **Date**: 2026-09-11
 
@@ -3880,7 +3968,7 @@ black ($0000) if not specified or zero.
 
 ---
 
-## Task 13.3 — Mouse Input
+### Task 13.3 — Mouse Input
 
 **Date**: 2026-09-11
 
@@ -3940,7 +4028,7 @@ Buttons use natural platform ordering (bit 0 = primary, bit 1 = secondary).
 
 ---
 
-## Task 13.4 — Buffer Screen and Remaining EXT Opcodes
+### Task 13.4 — Buffer Screen and Remaining EXT Opcodes
 
 **Date**: 2026-09-11
 **Branch**: `feature/13.4-buffer-screen-remaining-ext`
@@ -4015,7 +4103,7 @@ support for remaining EXT opcodes.
 
 ---
 
-## Task 13.5 — Adaptive Palette (Legacy V6 Games)
+### Task 13.5 — Adaptive Palette (Legacy V6 Games)
 
 **Date**: 2026-09-11
 **Branch**: `feature/13.5-adaptive-palette`
@@ -4103,7 +4191,7 @@ pictures use the Current Palette instead of their own PLTE chunk.
 
 ## Phase 14: Testing, Polish, and Release
 
-## Task 14.1 — Czech Conformance Testing
+### Task 14.1 — Czech Conformance Testing
 
 **Date**: 2026-09-11
 **Branch**: `feature/14.1-czech-conformance`
@@ -4201,7 +4289,7 @@ None. All czech.z5 tests pass with zero failures.
 
 ---
 
-## Task 14.2 — Infocom Story File Compatibility Testing
+### Task 14.2 — Infocom Story File Compatibility Testing
 
 **Date**: 2026-09-11
 **Branch**: `feature/14.2-infocom-compatibility`
@@ -4279,7 +4367,7 @@ Blorb integration path.
 
 ---
 
-## Task 14.3 — Performance Optimization and Error Handling
+### Task 14.3 — Performance Optimization and Error Handling
 
 ### Summary
 
@@ -4408,3 +4496,208 @@ This is the final deliverable set before the development journal export
 
 - **MIT license**: Standard permissive license appropriate for an
   open-source hobby/educational project.
+
+---
+
+### Task 14.5 — Development Journal (PDF)
+
+**Date**: 2026-09-12
+
+#### Summary
+
+Final polish of the development journal: added architecture diagrams for
+the four major subsystems, a table of contents for PDF navigation, and
+exported the journal as a PDF via `md-to-pdf`.
+
+#### Changes
+
+1. **Architecture diagrams** — four Mermaid diagrams added as an appendix:
+   - Memory model (dynamic/static/high regions, pristine copy)
+   - Instruction pipeline (fetch → decode → dispatch → execute cycle)
+   - Screen and rendering stack (Core interfaces → IO layer → Avalonia)
+   - Theme architecture (ITheme, ThemeConfig, ThemeRegistry, 7 themes)
+
+2. **Table of contents** — linked TOC at the top of the document covering
+   all 14 phases plus the appendix
+
+3. **PDF export** — generated `docs/DEVJOURNAL.pdf` via `npx md-to-pdf`
+
+#### Design Decisions
+
+- **Mermaid over hand-drawn**: Mermaid diagrams render natively in GitHub
+  Markdown and are convertible to images for PDF. They are source-controlled
+  text, not binary blobs.
+
+- **Appendix placement**: Architecture diagrams live in an appendix rather
+  than scattered through task entries, because they represent the final
+  state of each subsystem — not a snapshot from the task that introduced it.
+
+---
+
+## Appendix A: Architecture Diagrams
+
+### A.1 — Memory Model
+
+The Z-Machine memory is a contiguous byte array divided into three regions.
+A pristine copy of the original file is retained for `@restart` and
+Quetzal XOR-based save compression.
+
+```mermaid
+graph TD
+    subgraph "Story File (byte array)"
+        DYN["Dynamic Memory<br/>0x0000 → staticBase-1<br/>(writable at runtime)"]
+        STAT["Static Memory<br/>staticBase → highBase-1<br/>(read-only at runtime)"]
+        HIGH["High Memory<br/>highBase → fileEnd<br/>(code + strings, inaccessible)"]
+    end
+
+    DYN --> STAT --> HIGH
+
+    PRISTINE["Pristine Copy<br/>(immutable snapshot)"]
+    PRISTINE -.->|"@restart<br/>restores dynamic"| DYN
+    PRISTINE -.->|"Quetzal CMem<br/>XOR delta"| SAVE["QuetzalWriter"]
+
+    HEADER["Header (0x00–0x3F)"]
+    HEADER -->|"lives in"| DYN
+
+    OBJTBL["Object Table"]
+    OBJTBL -->|"lives in"| DYN
+
+    ABBR["Abbreviation Table"]
+    ABBR -->|"lives in"| DYN
+
+    DICT["Dictionary"]
+    DICT -->|"lives in"| STAT
+
+    ROUTINES["Routines"]
+    ROUTINES -->|"live in"| HIGH
+
+    STRINGS["Packed Strings"]
+    STRINGS -->|"live in"| HIGH
+```
+
+### A.2 — Instruction Pipeline
+
+The fetch-decode-execute cycle runs in `Interpreter.Step()`. Each
+instruction is decoded into an `Instruction` struct, then dispatched
+by form (2OP/1OP/0OP/VAR/EXT) to the appropriate handler.
+
+```mermaid
+flowchart LR
+    FETCH["Fetch<br/>Read bytes at PC"] --> DECODE["Decode<br/>InstructionDecoder"]
+    DECODE --> FORM{"Form?"}
+
+    FORM -->|"Long (2OP)"| DISPATCH_2OP["Dispatch2OP"]
+    FORM -->|"Short (1OP/0OP)"| DISPATCH_10["Dispatch1OP<br/>Dispatch0OP"]
+    FORM -->|"Variable"| DISPATCH_VAR["DispatchVAR"]
+    FORM -->|"Extended"| DISPATCH_EXT["DispatchEXT"]
+
+    DISPATCH_2OP --> EXECUTE
+    DISPATCH_10 --> EXECUTE
+    DISPATCH_VAR --> EXECUTE
+    DISPATCH_EXT --> EXECUTE
+
+    EXECUTE["Execute<br/>Opcode handler"] --> STORE{"Store<br/>result?"}
+    STORE -->|"Yes"| WRITE_VAR["Write to<br/>variable"]
+    STORE -->|"No"| BRANCH
+
+    WRITE_VAR --> BRANCH{"Branch?"}
+    BRANCH -->|"Yes"| EVAL_BRANCH["Evaluate<br/>condition"]
+    BRANCH -->|"No"| NEXT["Advance PC"]
+
+    EVAL_BRANCH -->|"Taken"| JUMP["Jump or<br/>return 0/1"]
+    EVAL_BRANCH -->|"Not taken"| NEXT
+
+    JUMP --> FETCH
+    NEXT --> FETCH
+
+    subgraph "Error Handling"
+        EXECUTE -.->|"exception"| WRAP["Wrap in<br/>ZMachineException<br/>(PC + opcode context)"]
+    end
+```
+
+### A.3 — Screen and Rendering Stack
+
+The interpreter talks to `IScreen` (defined in Core). The IO layer
+provides `GuiScreen` backed by `SkiaRenderer`. The App layer hosts
+the Avalonia window with `SkiaCanvasControl`.
+
+```mermaid
+graph TD
+    subgraph "ZMachine.Core"
+        INTERP["Interpreter"]
+        ISCREEN["IScreen<br/>(interface)"]
+        IINPUT["IInputStream<br/>(interface)"]
+        IPICT["IPictureProvider<br/>(interface)"]
+        ISOUND["ISoundEngine<br/>(interface)"]
+        OSM["OutputStreamManager<br/>(4 streams)"]
+        V6WM["V6WindowManager<br/>(8 windows)"]
+        INTERP --> ISCREEN
+        INTERP --> IINPUT
+        INTERP --> OSM
+        OSM --> ISCREEN
+    end
+
+    subgraph "ZMachine.IO"
+        GUISCR["GuiScreen"]
+        GUIIN["GuiInputStream"]
+        RENDERER["SkiaRenderer<br/>(back buffer)"]
+        BMFONT["BitmapFont<br/>(glyph blitting)"]
+        PICTMGR["PictureManager"]
+        SNDMGR["SoundManager"]
+        WINMGR["WindowManager"]
+        GUISCR --> RENDERER
+        RENDERER --> BMFONT
+        GUISCR -.->|implements| ISCREEN
+        GUIIN -.->|implements| IINPUT
+        PICTMGR -.->|implements| IPICT
+        SNDMGR -.->|implements| ISOUND
+    end
+
+    subgraph "ZMachine.App (Avalonia)"
+        MAINWIN["MainWindow"]
+        CANVAS["SkiaCanvasControl"]
+        MAINWIN --> CANVAS
+        CANVAS -->|"renders"| RENDERER
+    end
+```
+
+### A.4 — Theme Architecture
+
+Each theme provides a `ThemeConfig` (palette, font, dimensions, chrome).
+`ThemeRegistry` enumerates all registered themes. `UserPreferences`
+persists the selected theme across sessions.
+
+```mermaid
+graph TD
+    subgraph "ITheme Implementations"
+        C64["C64Theme<br/>(Classic)"]
+        MC64["ModernC64Theme"]
+        APPLE["AppleIITheme"]
+        DOSG["DosMonochromeTheme<br/>(Green)"]
+        DOSA["DosMonochromeTheme<br/>(Amber)"]
+        DOSC["DosColorTheme"]
+        AMIGA["AmigaTheme"]
+    end
+
+    ITHEME["ITheme<br/>(interface)"]
+    C64 -.->|implements| ITHEME
+    MC64 -.->|implements| ITHEME
+    APPLE -.->|implements| ITHEME
+    DOSG -.->|implements| ITHEME
+    DOSA -.->|implements| ITHEME
+    DOSC -.->|implements| ITHEME
+    AMIGA -.->|implements| ITHEME
+
+    ITHEME --> TCONFIG["ThemeConfig<br/>• ColorPalette<br/>• BitmapFont<br/>• ScreenDimensions<br/>• ChromeStyle"]
+
+    REGISTRY["ThemeRegistry<br/>(7 themes)"]
+    REGISTRY -->|enumerates| ITHEME
+
+    PREFS["UserPreferences<br/>(JSON persistence)"]
+    PREFS -->|selected theme id| REGISTRY
+
+    RENDERER["SkiaRenderer"]
+    TCONFIG -->|configures| RENDERER
+    TCONFIG -->|provides font| BMFONT["BitmapFont"]
+    BMFONT -->|glyph blitting| RENDERER
+```

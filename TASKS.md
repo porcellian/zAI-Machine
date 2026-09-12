@@ -1665,7 +1665,7 @@ User-facing docs and release builds.
 
 ---
 
-### 14.5 — Development Journal (PDF)
+### 14.5 — Development Journal (PDF) ✅
 
 Maintain a living development journal that documents all implementation
 steps, design decisions, and the reasoning behind them. This is separate
