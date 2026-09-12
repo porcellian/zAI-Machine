@@ -3937,3 +3937,78 @@ Buttons use natural platform ordering (bit 0 = primary, bit 1 = secondary).
 - Mouse window filtering: no manager (V5), inside, outside,
   -1 any window, changed target, boundary cases (7)
 - Disassembler mnemonic: EXT:23 = read_mouse (2, inline)
+
+---
+
+## Task 13.4 — Buffer Screen and Remaining EXT Opcodes
+
+**Date**: 2026-09-11
+**Branch**: `feature/13.4-buffer-screen-remaining-ext`
+
+### Summary
+
+Implemented `@buffer_screen` (EXT:29), V6 optional window parameters for
+`@set_font` and `@set_colour`, the screen redraw bit, and disassembler
+support for remaining EXT opcodes.
+
+### Implementation Steps
+
+1. **`@buffer_screen` (EXT:29)**: Added `_bufferScreenMode` field to
+   ZMachine.cs tracking the current buffer screen mode. The opcode returns
+   the old mode and sets the new one. Mode -1 forces an immediate update
+   without changing the stored mode. Added to both the EXT store decode
+   table and the dispatch switch.
+
+2. **`@set_font` V6 window parameter**: Updated EXT:4 dispatch to accept
+   an optional second operand specifying the target window. The value -3
+   means "currently selected window." When provided, the V6Window.Font
+   property is updated on the target window.
+
+3. **`@set_colour` V6 window parameter**: Updated ExecuteSetColour to
+   check `ops.Length > 2` and use the third operand as the target window
+   number. The value -3 resolves to the currently selected window.
+
+4. **Screen redraw bit**: Added `RequestScreenRedraw()` method to
+   ZMachine.cs. Sets Flags 2 bit 2 in the header, per ZSpec11 "Status
+   line redraw." The interpreter calls this after a screen resize so the
+   game knows to redraw.
+
+5. **Disassembler updates**: Added EXT:29 to the store decode table in
+   `DecodeStoreAndBranch`. Added mnemonics for EXT:24 (make_menu),
+   EXT:25 (picture_table), and EXT:29 (buffer_screen) to `GetEXTMnemonic`.
+
+### Design Decisions
+
+- **Buffer screen as no-op rendering**: The `_bufferScreenMode` field
+  tracks mode transitions, but the actual compositing (mode 1 backing
+  store vs mode 0 immediate) is a rendering concern delegated to the
+  IScreen implementation. The core faithfully returns the old mode and
+  tracks mode changes, as spec-compliant interpreters may ignore
+  buffer_screen entirely (acting as mode 0).
+
+- **-3 window parameter convention**: Both `@set_font` and `@set_colour`
+  use the same pattern: `(short)ops[N] == -3` resolves to the currently
+  selected window. This matches the spec's convention where -3 means
+  "the window currently being operated on."
+
+- **Screen redraw bit location**: Flags 2 bit 2. The base spec calls this
+  "requesting status line redraw" (game sets it); ZSpec11 reinterprets it
+  as "requesting screen redraw" (interpreter may also set it after resize).
+
+### Spec References
+
+- ZSpec11 "@buffer_screen" — mode 0/1/-1, returns old state, may be ignored.
+- ZSpec11 "@set_font" — optional window parameter, -3 = current.
+- ZSpec11 "Status line redraw" — interpreter sets bit 2 after resize.
+- ZSpec S14/S15 — EXT opcode table, store/branch annotations.
+
+### Test Coverage (15 tests)
+
+- Disassembler: EXT:24 make_menu, EXT:25 picture_table, EXT:29 buffer_screen
+  with store decode (3)
+- V6Window font property: set/get, via SetProperty, on specific window,
+  -3 resolves to current (4)
+- V6Window colour data: set/get, on specific non-current window (2)
+- Screen redraw bit: sets Flags 2 bit 2, preserves other bits (2)
+- Buffer screen mode: defaults to 0, set returns previous, -1 does not
+  change stored mode, round-trip 0→1→0 (4)

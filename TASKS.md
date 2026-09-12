@@ -1545,7 +1545,7 @@ ZSpec11 "Mouse co-ordinates"
 
 ---
 
-### 13.4 — Buffer Screen and Remaining EXT Opcodes
+### 13.4 — Buffer Screen and Remaining EXT Opcodes ✅
 
 V6-specific and remaining Standard 1.1 extended opcodes.
 
