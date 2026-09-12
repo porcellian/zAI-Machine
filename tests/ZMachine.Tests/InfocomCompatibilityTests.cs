@@ -107,7 +107,7 @@ public class InfocomCompatibilityTests
 
         var result = RunStory(path, commands, instructionLimit: 50_000_000);
 
-        Assert.False(result.Crashed, $"Crashed after {result.TurnsCompleted} turns: {result.Error}");
+        Assert.False(result.Crashed, $"Crashed: {result.Error}");
         Assert.False(result.HitLimit, "Hit instruction limit during 20-turn test");
     }
 
