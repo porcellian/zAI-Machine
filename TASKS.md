@@ -54,7 +54,7 @@ in code comments but is essential for understanding the project's history.
 
 ## Phase 1: Project Foundation
 
-### 1.1 — Solution Structure and Build Configuration
+### 1.1 — Solution Structure and Build Configuration ✅
 
 Create the .NET 8+ solution with layered projects separating the engine
 from I/O and GUI.
@@ -74,7 +74,7 @@ from I/O and GUI.
 
 ---
 
-### 1.2 — Story File Loader and Memory Model
+### 1.2 — Story File Loader and Memory Model ✅
 
 Load a story file into a byte array with big-endian read/write access.
 Memory is divided into dynamic (writable), static (read-only at runtime),
@@ -98,7 +98,7 @@ Quetzal XOR compression.
 
 ---
 
-### 1.3 — Header Parser and Version Detection
+### 1.3 — Header Parser and Version Detection ✅
 
 Parse the 64-byte header and optional header extension table. This drives
 all version-conditional behavior and capability negotiation.
@@ -130,7 +130,7 @@ ZSpec11 "Header Extension"
 
 ## Phase 2: Instruction Decoding
 
-### 2.1 — Opcode Forms and Operand Type Decoding
+### 2.1 — Opcode Forms and Operand Type Decoding ✅
 
 Implement the instruction decoder: read bytes at PC, determine opcode
 number, operand count, and operand types. Four encoding forms: long,
@@ -156,7 +156,7 @@ short, variable, extended.
 
 ---
 
-### 2.2 — Branch and Store Result Mechanics
+### 2.2 — Branch and Store Result Mechanics ✅
 
 Decode store bytes and branch offsets that follow certain opcodes.
 
@@ -175,7 +175,7 @@ Decode store bytes and branch offsets that follow certain opcodes.
 
 ---
 
-### 2.3 — Packed Address Calculations
+### 2.3 — Packed Address Calculations ✅
 
 Convert packed addresses to byte addresses. The formula differs by version.
 
@@ -195,7 +195,7 @@ Convert packed addresses to byte addresses. The formula differs by version.
 
 ---
 
-### 2.4 — Stack and Call Frame Model
+### 2.4 — Stack and Call Frame Model ✅
 
 Implement the dual stack: a call stack of frames (each with local
 variables and return address) plus a per-frame evaluation stack.
@@ -222,7 +222,7 @@ variables and return address) plus a per-frame evaluation stack.
 
 ## Phase 3: Text System
 
-### 3.1 — Z-Character Decoding and Alphabet Tables
+### 3.1 — Z-Character Decoding and Alphabet Tables ✅
 
 Z-Machine text is 5-bit Z-characters packed three per 16-bit word,
 mapped through three alphabet tables (A0, A1, A2).
@@ -246,7 +246,7 @@ mapped through three alphabet tables (A0, A1, A2).
 
 ---
 
-### 3.2 — Abbreviation Table Expansion
+### 3.2 — Abbreviation Table Expansion ✅
 
 Z-characters 1/2/3 (version-dependent) trigger abbreviation expansion.
 96 entries in V3+ (32 per trigger character).
@@ -265,7 +265,7 @@ Z-characters 1/2/3 (version-dependent) trigger abbreviation expansion.
 
 ---
 
-### 3.3 — ZSCII Character Set and Unicode Output
+### 3.3 — ZSCII Character Set and Unicode Output ✅
 
 ZSCII codes 32–126 = ASCII. Codes 155–251 = "extra characters" defaulting
 to Latin-1-like, overridable via a Unicode translation table in V5+.
@@ -288,7 +288,7 @@ to Latin-1-like, overridable via a Unicode translation table in V5+.
 
 ---
 
-### 3.4 — Text Encoding for Dictionary Lookup
+### 3.4 — Text Encoding for Dictionary Lookup ✅
 
 Encode text into Z-characters for dictionary lookup (used by `@tokenise`
 and `@read`).
@@ -314,7 +314,7 @@ and `@read`).
 
 ## Phase 4: Object System
 
-### 4.1 — Object Table and Tree Traversal
+### 4.1 — Object Table and Tree Traversal ✅
 
 The world model is a tree of objects with parent/sibling/child pointers.
 Entry size differs: V1–3 = 9 bytes (objects 1–255), V4+ = 14 bytes
@@ -339,7 +339,7 @@ Entry size differs: V1–3 = 9 bytes (objects 1–255), V4+ = 14 bytes
 
 ---
 
-### 4.2 — Property System
+### 4.2 — Property System ✅
 
 Each object has a variable-length property list preceded by a short name
 (Z-string). Properties are numbered, stored in descending order, terminated
@@ -367,7 +367,7 @@ by a zero size byte.
 
 ---
 
-### 4.3 — Attribute System
+### 4.3 — Attribute System ✅
 
 Bitfield of flags per object: 32 attributes (4 bytes) in V1–3, 48
 attributes (6 bytes) in V4+. Numbered from MSB of first byte.
@@ -389,7 +389,7 @@ attributes (6 bytes) in V4+. Numbered from MSB of first byte.
 
 ## Phase 5: I/O and Screen Model
 
-### 5.1 — Text Output Backend (Console)
+### 5.1 — Text Output Backend (Console) ✅
 
 Initial text output path: console-based screen for V3 status line and
 basic upper/lower window model. The first playable output mode.
@@ -414,7 +414,7 @@ basic upper/lower window model. The first playable output mode.
 
 ---
 
-### 5.2 — Output Stream Management
+### 5.2 — Output Stream Management ✅
 
 Four output streams: 1=screen, 2=transcript file, 3=memory table,
 4=player input recording. Streams 3 and 4 are V5+ only.
@@ -438,7 +438,7 @@ Four output streams: 1=screen, 2=transcript file, 3=memory table,
 
 ---
 
-### 5.3 — Dictionary and Lexical Analysis
+### 5.3 — Dictionary and Lexical Analysis ✅
 
 Parse the game's dictionary and implement the tokenization algorithm
 for `@read` and `@tokenise`.
@@ -465,7 +465,7 @@ for `@read` and `@tokenise`.
 
 ---
 
-### 5.4 — Input System
+### 5.4 — Input System ✅
 
 Implement `@read` (line input) and `@read_char` (single keypress),
 including timed input in V4+.
@@ -503,7 +503,7 @@ including timed input in V4+.
 
 ---
 
-### 5.5 — Status Line and Window Management (V1–V5)
+### 5.5 — Status Line and Window Management (V1–V5) ✅
 
 V1–3: status line with location/score/time. V4–5: split upper/lower
 window model.
@@ -530,7 +530,7 @@ window model.
 
 ## Phase 6: Full Instruction Set
 
-### 6.1 — Arithmetic, Logical, and Comparison Opcodes
+### 6.1 — Arithmetic, Logical, and Comparison Opcodes ✅
 
 All arithmetic, bitwise, and comparison instructions. 16-bit values;
 arithmetic uses signed interpretation where appropriate.
@@ -553,7 +553,7 @@ arithmetic uses signed interpretation where appropriate.
 
 ---
 
-### 6.2 — Variable, Memory, and Table Opcodes
+### 6.2 — Variable, Memory, and Table Opcodes ✅
 
 Opcodes for variable manipulation, memory read/write, and table operations.
 
@@ -578,7 +578,7 @@ ZSpec11 "@scan_table"
 
 ---
 
-### 6.3 — Object Manipulation Opcodes
+### 6.3 — Object Manipulation Opcodes ✅
 
 All opcodes operating on the object tree, properties, and attributes.
 
@@ -596,7 +596,7 @@ All opcodes operating on the object tree, properties, and attributes.
 
 ---
 
-### 6.4 — Text Output Opcodes
+### 6.4 — Text Output Opcodes ✅
 
 All opcodes that produce text output.
 
@@ -618,7 +618,7 @@ All opcodes that produce text output.
 
 ---
 
-### 6.5 — Control Flow Opcodes
+### 6.5 — Control Flow Opcodes ✅
 
 Routine calls (multiple variants), returns, and flow control.
 
@@ -643,7 +643,7 @@ Routine calls (multiple variants), returns, and flow control.
 
 ---
 
-### 6.6 — V5+ Screen and Style Opcodes
+### 6.6 — V5+ Screen and Style Opcodes ✅
 
 Remaining opcodes for styles, fonts, colors, and screen queries.
 
@@ -686,7 +686,7 @@ ZSpec11 "@set_colour"
 
 ## Phase 7: Execution Integration and First Playable
 
-### 7.1 — Main Execution Loop and Opcode Dispatch
+### 7.1 — Main Execution Loop and Opcode Dispatch ✅
 
 Wire all opcodes into a central fetch-decode-execute loop. This integrates
 all prior work into a running interpreter.
@@ -709,7 +709,7 @@ all prior work into a running interpreter.
 
 ---
 
-### 7.2 — Regression Test Harness
+### 7.2 — Regression Test Harness ✅
 
 Automated testing: feed scripted input, capture output, compare against
 known-good transcripts.
@@ -737,7 +737,7 @@ help authors debug new works. Building them early (right after the first
 playable milestone) pays for itself as a troubleshooting aid for every
 subsequent phase.
 
-### 8.1 — Story File Inspector
+### 8.1 — Story File Inspector ✅
 
 Display parsed metadata and structural information about the loaded
 story file. Accessible from Tools → Story Info.
@@ -765,7 +765,7 @@ story file. Accessible from Tools → Story Info.
 
 ---
 
-### 8.2 — Object Tree Viewer
+### 8.2 — Object Tree Viewer ✅
 
 Interactive tree view of the game's object hierarchy. Accessible from
 Tools → Object Tree.
@@ -791,7 +791,7 @@ Tools → Object Tree.
 
 ---
 
-### 8.3 — Dictionary Viewer
+### 8.3 — Dictionary Viewer ✅
 
 Display the game's dictionary contents. Accessible from
 Tools → Dictionary.
@@ -814,7 +814,7 @@ Tools → Dictionary.
 
 ---
 
-### 8.4 — Disassembler
+### 8.4 — Disassembler ✅
 
 Disassemble Z-Machine instructions from the story file, showing decoded
 opcodes with operands, branch targets, and store destinations. Accessible
@@ -845,7 +845,7 @@ from Tools → Disassembly.
 
 ---
 
-### 8.5 — Interactive Debugger (Step-Through Execution)
+### 8.5 — Interactive Debugger (Step-Through Execution) ✅
 
 A step-through debugger that allows instruction-by-instruction execution
 with full state inspection — the primary troubleshooting tool for both
@@ -896,7 +896,7 @@ Tools → Debugger.
 
 ## Phase 9: Save/Restore (Quetzal)
 
-### 9.1 — IFF Container Format Reader/Writer
+### 9.1 — IFF Container Format Reader/Writer ✅
 
 Both Quetzal and Blorb use IFF. Implement a general-purpose IFF
 reader/writer.
@@ -925,7 +925,7 @@ reader/writer.
 
 ---
 
-### 9.2 — Quetzal Save Implementation
+### 9.2 — Quetzal Save Implementation ✅
 
 Write current game state to a Quetzal file (IFF FORM 'IFZS').
 
@@ -953,7 +953,7 @@ Write current game state to a Quetzal file (IFF FORM 'IFZS').
 
 ---
 
-### 9.3 — Quetzal Restore and Undo
+### 9.3 — Quetzal Restore and Undo ✅
 
 Read a Quetzal file and reconstruct game state. Also implement
 `@save_undo` / `@restore_undo` using in-memory snapshots.
@@ -992,7 +992,7 @@ ZSpec11 "@save and @restore"
 
 ## Phase 10: Blorb Resource Loading
 
-### 10.1 — Blorb File Parser and Resource Index
+### 10.1 — Blorb File Parser and Resource Index ✅
 
 Parse a Blorb file (IFF FORM 'IFRS'). The first chunk must be the
 resource index ('RIdx').
@@ -1028,7 +1028,7 @@ resource index ('RIdx').
 
 ---
 
-### 10.2 — Story Loading from Blorb and Metadata
+### 10.2 — Story Loading from Blorb and Metadata ✅
 
 Load Z-code from the 'Exec' resource ('ZCOD' chunk type). Parse optional
 metadata chunks.
@@ -1053,7 +1053,7 @@ metadata chunks.
 
 ---
 
-### 10.3 — Blorb Resource Discovery and Header Flag Integration
+### 10.3 — Blorb Resource Discovery and Header Flag Integration ✅
 
 Connect resource availability to Z-Machine header capability flags.
 
@@ -1094,7 +1094,7 @@ Alternatives considered but not recommended:
 - MAUI: not suited for pixel-precise custom rendering
 - WPF: Windows-only, no macOS/Linux support
 
-### 11.1 — Avalonia UI Project Setup and Rendering Abstraction
+### 11.1 — Avalonia UI Project Setup and Rendering Abstraction ✅
 
 Set up the Avalonia UI application and build the rendering abstraction
 that all themes will render through.
@@ -1519,7 +1519,7 @@ ZSpec11 "@set_colour", ZSpec11 "Header Extension"
 
 ---
 
-### 13.3 — Mouse Input
+### 13.3 — Mouse Input ✅
 
 Mouse clicks during input generate ZSCII codes. `@read_mouse` reads
 current state in real time.
