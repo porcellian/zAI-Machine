@@ -4098,3 +4098,103 @@ pictures use the Current Palette instead of their own PLTE chunk.
 - Draw workflow: non-adaptive then adaptive, two non-adaptive
   replacements, GetCurrentPalette returns copy (3)
 - Edge cases: out-of-range indices -1/16/100 (2, via Theory)
+
+---
+
+## Phase 14: Testing, Polish, and Release
+
+## Task 14.1 — Czech Conformance Testing
+
+**Date**: 2026-09-11
+**Branch**: `feature/14.1-czech-conformance`
+
+### Summary
+
+Ran czech.z5 (Comprehensive Z-machine Emulation CHecker, version 0.8)
+against the interpreter. Initial run: 372 passed, 29 failed. All 29
+failures were in the "Indirect Opcodes" section. Root cause identified
+and fixed: indirect variable opcodes used raw operand values instead
+of resolved values, causing incorrect variable targeting when operands
+were variable references. After fix: 406 passed, 0 failed.
+
+### Initial Czech Results (Before Fix)
+
+```
+Passed: 372, Failed: 29, Print tests: 19
+```
+
+All 29 failures in the "Indirect Opcodes" section:
+- `@load` with `[spointer]`, `[sp=lpointer]`: 3 failures
+- `@store` with `[spointer]`, `[rpointer]`, `[sp=rpointer]`: 5 failures
+- `@pull` with `[rpointer]`, `[sp=rpointer]`, `[spointer]`: 4 failures
+- `@inc` with `[rpointer]`, `[sp=rpointer]`, `[spointer]`: 4 failures
+- `@dec` with `[rpointer]`, `[sp=rpointer]`, `[spointer]`: 4 failures
+- `@inc_chk` with `[rpointer]`, `[sp=rpointer]`, `[spointer]`: 4 failures
+- `@dec_chk` with `[rpointer]`, `[sp=rpointer]`, `[spointer]`: 5 failures
+
+### Root Cause
+
+The seven indirect variable opcodes (`@load`, `@store`, `@pull`,
+`@inc`, `@dec`, `@inc_chk`, `@dec_chk`) were using
+`(byte)inst.Operands[0]` as the target variable number. This is the
+*raw, unresolved* operand — when the operand type is "variable", it
+gives the variable number of the operand source, not the resolved
+value (the actual target variable number).
+
+For example, `@store [var3] value` where var3 contains 5: the code
+used `inst.Operands[0]` = 3 (the variable number), but should have
+used `ops[0]` = 5 (the resolved value = the target variable).
+
+### Fix
+
+Changed all seven opcodes from `(byte)inst.Operands[0]` to
+`(byte)ops[0]` in `ZMachine.cs`. The `ops` array contains resolved
+operand values, which is the correct variable number to pass to the
+indirect reference methods.
+
+### Additional Fix: Header Initialization
+
+Added `Header.ConfigureInterpreter()` call during `Init()` to set:
+- Interpreter number 6 (IBM PC), version 'A'
+- Screen dimensions from IScreen
+- Capability flags: Colors, Bold, Italic, FixedSpace, Undo,
+  ScreenSplitting, VariablePitchDefault (V3)
+- Standard revision 1.1 ($32/$33 = $01/$01)
+
+Updated the existing `Flags_V3Story_NotModified` test (renamed to
+`Flags_V3Story_CapabilitiesSet`) to verify V3 capability bits are
+correctly set per ZSpec S11.
+
+### Final Czech Results (After Fix)
+
+```
+Passed: 406, Failed: 0, Print tests: 19
+standard 1.1
+interpreter 6 A (IBM PC)
+Flags on: color, boldface, italic, fixed-space
+Screen size: 80x25
+```
+
+### Intentional Deviations
+
+None. All czech.z5 tests pass with zero failures.
+
+### Spec References
+
+- ZSpec S6.3 — Variable 0 = stack pointer.
+- ZSpec11 "Indirect variable references" — the seven opcodes that
+  treat variable 0 specially when used as an indirect reference.
+- ZSpec S11 — Header interpreter identification, capability flags.
+
+### Test Coverage (19 tests)
+
+- Czech_AllTestsPass: verifies "Failed: 0" in output (1)
+- Czech_RunsToCompletion: verifies completion message (1)
+- Czech_NoErrors: verifies no ERROR lines in output (1)
+- Czech_StandardVersionHeader: $32/$33 = $01/$01 (1)
+- Czech_InterpreterIdentification: $1E/$1F non-zero (1)
+- Czech_CapabilityFlagsSet: Flags 1 bits 0/2/3/4 set (1)
+- Czech_ScreenDimensionsSet: $20/$21 non-zero (1)
+- Czech_SectionCompletes: all 9 test sections appear (9, via Theory)
+- Czech_PrintTests: print_num, print_char, print_obj correct (1)
+- Flags_V3Story_CapabilitiesSet: V3 capability bits set (1, updated)

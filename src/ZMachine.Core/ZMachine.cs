@@ -295,6 +295,19 @@ public class Interpreter
         _screenStyleOps.OnGetCursor = screen.GetScreenSize; // placeholder
         _screenStyleOps.OnSetFont = f => { return f; };
 
+        // ZSpec S11 — set interpreter identification and capability flags
+        var header = new Header(_memory);
+        var (screenCols, screenRows) = screen.GetScreenSize();
+        var caps = InterpreterCapabilities.Colors
+            | InterpreterCapabilities.Bold
+            | InterpreterCapabilities.Italic
+            | InterpreterCapabilities.FixedSpace
+            | InterpreterCapabilities.Undo
+            | InterpreterCapabilities.ScreenSplitting;
+        if (_version <= 3)
+            caps |= InterpreterCapabilities.VariablePitchDefault;
+        header.ConfigureInterpreter(6, (byte)'A', screenCols, screenRows, caps);
+
         // ZSpec S8.8 — V6 uses 8 independent windows
         if (_version == 6)
         {
@@ -499,11 +512,11 @@ public class Interpreter
                 break;
             case 4: // dec_chk (indirect var ref)
                 BranchAndAdvance(ref inst,
-                    VariableMemoryOps.DecChk(_state, (byte)inst.Operands[0], (short)ops[1]));
+                    VariableMemoryOps.DecChk(_state, (byte)ops[0], (short)ops[1]));
                 break;
             case 5: // inc_chk (indirect var ref)
                 BranchAndAdvance(ref inst,
-                    VariableMemoryOps.IncChk(_state, (byte)inst.Operands[0], (short)ops[1]));
+                    VariableMemoryOps.IncChk(_state, (byte)ops[0], (short)ops[1]));
                 break;
             case 6: // jin
                 BranchAndAdvance(ref inst, _objectOps.JumpIn(ops[0], ops[1]));
@@ -529,7 +542,7 @@ public class Interpreter
                 _state.PC = inst.NextAddress;
                 break;
             case 13: // store (indirect)
-                VariableMemoryOps.Store(_state, (byte)inst.Operands[0], ops[1]);
+                VariableMemoryOps.Store(_state, (byte)ops[0], ops[1]);
                 _state.PC = inst.NextAddress;
                 break;
             case 14: // insert_obj
@@ -638,11 +651,11 @@ public class Interpreter
                 StoreAndAdvance(ref inst, _objectOps.GetPropLen(ops[0]));
                 break;
             case 5: // inc (indirect)
-                VariableMemoryOps.Inc(_state, (byte)inst.Operands[0]);
+                VariableMemoryOps.Inc(_state, (byte)ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
             case 6: // dec (indirect)
-                VariableMemoryOps.Dec(_state, (byte)inst.Operands[0]);
+                VariableMemoryOps.Dec(_state, (byte)ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
             case 7: // print_addr
@@ -679,7 +692,7 @@ public class Interpreter
             }
             case 14: // load (indirect)
                 StoreAndAdvance(ref inst,
-                    VariableMemoryOps.Load(_state, (byte)inst.Operands[0]));
+                    VariableMemoryOps.Load(_state, (byte)ops[0]));
                 break;
             case 15: // call_1n (V5+) or not (V1-4)
                 if (_version >= 5)
@@ -877,7 +890,7 @@ public class Interpreter
                 _state.PC = inst.NextAddress;
                 break;
             case 9: // pull (indirect var ref)
-                VariableMemoryOps.Pull(_state, (byte)inst.Operands[0]);
+                VariableMemoryOps.Pull(_state, (byte)ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
             case 10: // split_window

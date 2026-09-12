@@ -1596,7 +1596,7 @@ pictures change colors based on previously-plotted pictures.
 
 ## Phase 14: Testing, Polish, and Release
 
-### 14.1 — Czech Conformance Testing
+### 14.1 — Czech Conformance Testing ✅
 
 Run `czech.z5` systematically. Fix all reported issues.
 

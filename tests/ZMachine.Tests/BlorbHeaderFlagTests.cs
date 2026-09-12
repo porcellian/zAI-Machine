@@ -392,21 +392,26 @@ public class BlorbHeaderFlagTests
     /// V3 story: header flags are not modified (V4+ only).
     /// </summary>
     [Fact]
-    public void Flags_V3Story_NotModified()
+    public void Flags_V3Story_CapabilitiesSet()
     {
         var minizorkPath = ResolvePath("stories/minizork.z3");
         if (!File.Exists(minizorkPath)) return;
 
         byte[] storyData = File.ReadAllBytes(minizorkPath);
-        byte originalFlags1 = storyData[0x01];
 
         var machine = new Interpreter();
         machine.Load(storyData,
             new ScriptedInputStream(["quit", "y"]),
             new CaptureScreen());
 
+        // ZSpec S11 — V1–3 Flags 1: interpreter sets bits 4–6
+        // Bit 4 = status line NOT available (clear = available)
+        // Bit 5 = screen splitting available
+        // Bit 6 = variable-pitch font is default
         byte flags1 = machine.Memory.ReadByte(0x01);
-        Assert.Equal(originalFlags1, flags1);
+        Assert.Equal(0, flags1 & 0x10);      // status line available
+        Assert.NotEqual(0, flags1 & 0x20);   // screen splitting
+        Assert.NotEqual(0, flags1 & 0x40);   // variable-pitch default
     }
 
     #endregion
