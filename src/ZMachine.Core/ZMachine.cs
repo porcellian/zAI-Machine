@@ -1008,13 +1008,8 @@ public class Interpreter
                 ExecuteSoundEffect(ref inst, ops);
                 break;
             case 22: // read_char (store)
-            {
-                int ch = _inputStream.ReadChar();
-                if (ch == 254 || ch == 253)
-                    _mouseState.WriteClickToHeader(_memory);
-                StoreAndAdvance(ref inst, (ushort)ch);
+                ExecuteReadChar(ref inst, ops);
                 break;
-            }
             case 23: // scan_table (store+branch)
             {
                 ushort form = inst.OperandCount >= 4 ? ops[3] : (ushort)0x82;
@@ -1468,8 +1463,14 @@ public class Interpreter
 
     /// <summary>
     /// Executes the @read/@aread opcode. Shows status line in V1-3,
-    /// reads input, processes text/parse buffers.
+    /// reads input with optional timed callback (V4+), processes
+    /// text/parse buffers.
     /// </summary>
+    /// <remarks>
+    /// ZSpec S10.7 — V4+ timed input: operands 3 and 4 are the timeout
+    /// (tenths of a second) and callback routine. When the timer fires,
+    /// the routine is called; if it returns true, input is cancelled.
+    /// </remarks>
     private void ExecuteRead(ref Instruction inst, ushort[] ops)
     {
         // V1-3: show status line before reading.
@@ -1479,7 +1480,35 @@ public class Interpreter
         }
 
         int maxLen = _memory.ReadByte(ops[0]);
-        var (text, terminating) = _inputStream.ReadLine(maxLen);
+
+        // ZSpec S10.7 — V4+ optional timed input operands
+        int timeoutTenths = (_version >= 4 && inst.OperandCount >= 3) ? ops[2] : 0;
+        ushort timerRoutine = (_version >= 4 && inst.OperandCount >= 4) ? ops[3] : (ushort)0;
+
+        string text;
+        int terminating;
+
+        // Timed input loop: on timeout, call the callback. If it returns
+        // true (non-zero), cancel input. Otherwise resume reading.
+        while (true)
+        {
+            (text, terminating) = _inputStream.ReadLine(maxLen, timeoutTenths);
+
+            if (terminating != 0 || timeoutTenths == 0 || timerRoutine == 0)
+                break;
+
+            // Timeout fired — call the callback routine synchronously
+            ushort result = ExecuteTimedCallback(timerRoutine, inst.NextAddress);
+            if (result != 0)
+            {
+                // Callback returned true: cancel input, store 0
+                if (_version >= 5)
+                    StoreAndAdvance(ref inst, 0);
+                else
+                    _state.PC = inst.NextAddress;
+                return;
+            }
+        }
 
         ushort parseBuffer = inst.OperandCount >= 2 ? ops[1] : (ushort)0;
         int termChar = _readHandler.ProcessRead(text, ops[0], parseBuffer);
@@ -1492,6 +1521,64 @@ public class Interpreter
             StoreAndAdvance(ref inst, (ushort)termChar);
         else
             _state.PC = inst.NextAddress;
+    }
+
+    /// <summary>
+    /// Executes @read_char with optional timed callback (V4+).
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S10.7 — Operands: 1 [time routine]. Time in tenths of a second;
+    /// if the callback returns true, input is cancelled and 0 is stored.
+    /// </remarks>
+    private void ExecuteReadChar(ref Instruction inst, ushort[] ops)
+    {
+        int timeoutTenths = (_version >= 4 && inst.OperandCount >= 2) ? ops[1] : 0;
+        ushort timerRoutine = (_version >= 4 && inst.OperandCount >= 3) ? ops[2] : (ushort)0;
+
+        while (true)
+        {
+            int ch = _inputStream.ReadChar(timeoutTenths);
+
+            if (ch != 0 || timeoutTenths == 0 || timerRoutine == 0)
+            {
+                if (ch == 254 || ch == 253)
+                    _mouseState.WriteClickToHeader(_memory);
+                StoreAndAdvance(ref inst, (ushort)ch);
+                return;
+            }
+
+            ushort result = ExecuteTimedCallback(timerRoutine, inst.NextAddress);
+            if (result != 0)
+            {
+                StoreAndAdvance(ref inst, 0);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Synchronously calls a timed-input callback routine and returns its
+    /// result. Pushes a frame, runs instructions until the routine returns,
+    /// then pops the return value from the eval stack.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S10.7 — The callback may print text but must not alter input
+    /// state. It takes no arguments and returns true to cancel input.
+    /// </remarks>
+    private ushort ExecuteTimedCallback(ushort packedAddress, int returnPC)
+    {
+        int baseFrameCount = _state.CallStack.FrameCount;
+
+        // Call with no args; store result in variable 0 (eval stack push)
+        bool called = _controlFlowOps.Call(packedAddress, [], 0, 0, false, returnPC);
+        if (!called)
+            return 0;
+
+        while (_state.CallStack.FrameCount > baseFrameCount && _running)
+            Step();
+
+        // Return value was stored in variable 0 (pushed to eval stack)
+        return _state.ReadVariable(0);
     }
 
     /// <summary>
