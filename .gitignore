@@ -4,11 +4,10 @@
 ## Get latest from `dotnet new gitignore`
 
 # Copyrighted Infocom story files (not for redistribution)
-stories/zork1.z3
-stories/ballyhoo.z3
-stories/mind.z4
-stories/sherlock.z5
-stories/Journey/
+# czech.z5 and minizork.z3 are already tracked (non-copyrighted test files)
+stories/*
+!stories/czech.z5
+!stories/minizork.z3
 
 # Walkthrough files (copyrighted)
 examples/bally-walkthru*.txt
