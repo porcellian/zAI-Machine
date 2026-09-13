@@ -177,8 +177,6 @@ The test suite includes:
   routines configure screen/picture data that requires loaded images
 - **Sound playback**: Sound engine interface is defined but no audio
   backend is connected yet
-- **Timed input**: `@read` with timeout callback is parsed but the
-  timer is not implemented
 
 ## License
 
