@@ -1,11 +1,19 @@
 # zAI-Machine
 
+A (most assuredly) AI-slop implementation of Infocom's Z-Machine interpreter, 
+based on the Z-Machine Standards Document v1.1. Authored by Claude Code, 
+cleaned up by a human.
+
+(I am not going to review the code Claude generates until all tasks are 
+completed, as I would like to see how the machine works out-of-the-box 
+first. Note that Claude Code Review suggestions will be implemented, however.)
+
+## About
+
 A C# Z-Machine interpreter implementing the Z-Machine Standards Document
 v1.1, with Quetzal 1.4 save support and Blorb 2.0.4 resource loading.
 Features seven selectable vintage GUI themes rendered pixel-precisely
 with SkiaSharp on Avalonia UI.
-
-Authored by Claude Code, cleaned up by a human.
 
 ## Features
 
