@@ -41,7 +41,8 @@ public class TestHarness
     /// </param>
     public static TestHarness Run(string storyPath, string[] commands,
         int instructionLimit = DefaultInstructionLimit,
-        int? randomSeed = null)
+        int? randomSeed = null,
+        Core.ISaveFileProvider? saveProvider = null)
     {
         var harness = new TestHarness();
         harness.Input = new ScriptedInputStream(commands);
@@ -51,6 +52,8 @@ public class TestHarness
         harness.Machine.Load(storyPath, harness.Input, harness.Screen);
         if (randomSeed.HasValue)
             harness.Machine.SeedRandom(randomSeed.Value);
+        if (saveProvider != null)
+            harness.Machine.SaveFileProvider = saveProvider;
         harness.Execute(instructionLimit);
 
         return harness;

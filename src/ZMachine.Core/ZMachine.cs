@@ -29,6 +29,7 @@ public class Interpreter
     private StatusLineHandler _statusLineHandler = null!;
 
     private IInputStream _inputStream = null!;
+    private ISaveFileProvider? _saveFileProvider;
     private IPictureProvider? _pictureProvider;
     private ISoundEngine? _soundEngine;
     private V6WindowManager? _v6Windows;
@@ -56,6 +57,18 @@ public class Interpreter
     /// Seeds the RNG for deterministic test runs. Call after Load, before Step.
     /// </summary>
     public void SeedRandom(int seed) => _arithmeticOps.SeedForTesting(seed);
+
+    /// <summary>
+    /// Save file provider for @save and @restore opcodes. Set by the
+    /// host before calling Run(). Without a provider, save/restore fail
+    /// gracefully (store 0 / don't branch).
+    /// </summary>
+    /// <remarks>ZSpec S15 — @save / @restore use this to open file streams.</remarks>
+    public ISaveFileProvider? SaveFileProvider
+    {
+        get => _saveFileProvider;
+        set => _saveFileProvider = value;
+    }
 
     /// <summary>
     /// Picture provider for @draw_picture, @picture_data, @erase_picture.
@@ -791,16 +804,19 @@ public class Interpreter
                 _state.PC = inst.NextAddress;
                 break;
             case 5: // save (V1-4 only; V5+ uses EXT)
-                // Stub: always fail for now.
                 if (_version <= 3)
                 {
+                    // Quetzal S5.8 — savePC = branch data address
+                    int savePC3 = inst.NextAddress;
                     InstructionDecoder.DecodeBranch(_memory, ref inst);
-                    BranchAndAdvance(ref inst, false);
+                    BranchAndAdvance(ref inst, ExecuteSave(savePC3));
                 }
                 else if (_version == 4)
                 {
+                    // Quetzal S5.8 — savePC = store byte address
+                    int savePC4 = inst.NextAddress;
                     InstructionDecoder.DecodeStore(_memory, ref inst);
-                    StoreAndAdvance(ref inst, 0);
+                    StoreAndAdvance(ref inst, ExecuteSave(savePC4) ? (ushort)1 : (ushort)0);
                 }
                 else
                 {
@@ -811,12 +827,14 @@ public class Interpreter
                 if (_version <= 3)
                 {
                     InstructionDecoder.DecodeBranch(_memory, ref inst);
-                    BranchAndAdvance(ref inst, false);
+                    if (!ExecuteRestore())
+                        BranchAndAdvance(ref inst, false);
                 }
                 else if (_version == 4)
                 {
                     InstructionDecoder.DecodeStore(_memory, ref inst);
-                    StoreAndAdvance(ref inst, 0);
+                    if (!ExecuteRestore())
+                        StoreAndAdvance(ref inst, 0);
                 }
                 else
                 {
@@ -1054,7 +1072,9 @@ public class Interpreter
     {
         switch (inst.Opcode)
         {
-            case 0: case 1: case 2: case 3: case 4: case 9: case 10: case 12:
+            // Cases 0 (save) and 1 (restore) decode store in the main
+            // dispatch to capture the store byte address as savePC.
+            case 2: case 3: case 4: case 9: case 10: case 12:
             case 19: // get_wind_prop (store)
             case 29: // buffer_screen (store)
                 InstructionDecoder.DecodeStore(_memory, ref inst);
@@ -1068,12 +1088,41 @@ public class Interpreter
 
         switch (inst.Opcode)
         {
-            case 0: // save (store) — stub
-                StoreAndAdvance(ref inst, 0);
+            case 0: // save (store)
+            {
+                if (inst.OperandCount == 0)
+                {
+                    // Quetzal S5.8 — savePC = store byte address
+                    int savePC5 = inst.NextAddress;
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                    StoreAndAdvance(ref inst, ExecuteSave(savePC5) ? (ushort)1 : (ushort)0);
+                }
+                else
+                {
+                    // ZSpec11 "@save" — auxiliary save (table, bytes, name)
+                    // Not yet supported; decode store and return 0.
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                    StoreAndAdvance(ref inst, 0);
+                }
                 break;
-            case 1: // restore (store) — stub
-                StoreAndAdvance(ref inst, 0);
+            }
+            case 1: // restore (store)
+            {
+                if (inst.OperandCount == 0)
+                {
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                    if (!ExecuteRestore())
+                        StoreAndAdvance(ref inst, 0);
+                }
+                else
+                {
+                    // ZSpec11 "@restore" — auxiliary restore (table, bytes, name)
+                    // Not yet supported; decode store and return 0.
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                    StoreAndAdvance(ref inst, 0);
+                }
                 break;
+            }
             case 2: // log_shift
                 StoreAndAdvance(ref inst, ArithmeticOps.LogShift(ops[0], (short)ops[1]));
                 break;
@@ -1474,6 +1523,85 @@ public class Interpreter
         bool flag = operandCount >= 4 && ops[3] != 0;
 
         _tokenizer.Tokenize(text, dict, _memory, parseBuf, textBufferOffset: 2);
+    }
+
+    /// <summary>
+    /// Attempts a Quetzal save. Returns true on success, false on failure
+    /// (no provider, user cancelled, or I/O error).
+    /// </summary>
+    /// <remarks>Quetzal S5.8 — savePC interpretation varies by version.</remarks>
+    private bool ExecuteSave(int savePC)
+    {
+        if (_saveFileProvider == null)
+            return false;
+
+        try
+        {
+            using var stream = _saveFileProvider.OpenForSave();
+            if (stream == null)
+                return false;
+
+            QuetzalWriter.Save(stream, this, savePC);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Attempts a Quetzal restore. On success, restores memory, stack,
+    /// and PC, then stores 2 (V4+) or executes the saved branch (V1-3).
+    /// Returns true if restore succeeded and the caller should NOT
+    /// advance PC (it's already set).
+    /// </summary>
+    /// <remarks>
+    /// Quetzal S5.8 — On restore, PC resumes at the save point.
+    /// ZSpec S15 — @restore V4+: stores 2 at the restored save point.
+    /// ZSpec S15 — @restore V1-3: takes the branch at the restored save point.
+    /// </remarks>
+    private bool ExecuteRestore()
+    {
+        if (_saveFileProvider == null)
+            return false;
+
+        try
+        {
+            using var stream = _saveFileProvider.OpenForRestore();
+            if (stream == null)
+                return false;
+
+            // QuetzalReader sets _state.PC = savePC from IFhd
+            int savePC = QuetzalReader.Restore(stream, this);
+
+            if (_version <= 3)
+            {
+                // savePC points to the branch data of the original @save.
+                // Decode and execute it with condition=true (save succeeded).
+                var branchInst = new Instruction { NextAddress = savePC };
+                InstructionDecoder.DecodeBranch(_memory, ref branchInst);
+                BranchAndAdvance(ref branchInst, true);
+            }
+            else
+            {
+                // savePC points to the store byte of the original @save.
+                // Read the store variable and store 2 (restore just happened).
+                byte storeVar = _memory.ReadByte(savePC);
+                _state.StoreResult(storeVar, 2);
+                _state.PC = savePC + 1;
+            }
+
+            return true;
+        }
+        catch (QuetzalException)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void UnknownOpcode(ref Instruction inst)
