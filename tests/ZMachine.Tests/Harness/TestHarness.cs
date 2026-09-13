@@ -40,7 +40,8 @@ public class TestHarness
     /// Maximum instructions before aborting. Prevents infinite loops.
     /// </param>
     public static TestHarness Run(string storyPath, string[] commands,
-        int instructionLimit = DefaultInstructionLimit)
+        int instructionLimit = DefaultInstructionLimit,
+        int? randomSeed = null)
     {
         var harness = new TestHarness();
         harness.Input = new ScriptedInputStream(commands);
@@ -48,6 +49,8 @@ public class TestHarness
         harness.Machine = new Interpreter();
 
         harness.Machine.Load(storyPath, harness.Input, harness.Screen);
+        if (randomSeed.HasValue)
+            harness.Machine.SeedRandom(randomSeed.Value);
         harness.Execute(instructionLimit);
 
         return harness;
