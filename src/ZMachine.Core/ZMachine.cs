@@ -53,6 +53,11 @@ public class Interpreter
     public bool Running => _running;
 
     /// <summary>
+    /// Seeds the RNG for deterministic test runs. Call after Load, before Step.
+    /// </summary>
+    public void SeedRandom(int seed) => _arithmeticOps.SeedForTesting(seed);
+
+    /// <summary>
     /// Picture provider for @draw_picture, @picture_data, @erase_picture.
     /// Set by the host before calling Run() when Blorb pictures are available.
     /// </summary>

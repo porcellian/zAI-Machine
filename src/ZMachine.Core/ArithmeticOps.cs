@@ -12,6 +12,17 @@ namespace ZMachine.Core;
 public class ArithmeticOps
 {
     private Random _random = new();
+    private int? _testSeed;
+
+    /// <summary>
+    /// Seeds the RNG with a fixed value for deterministic test runs.
+    /// When set, @random 0 preserves the seed instead of re-randomizing.
+    /// </summary>
+    public void SeedForTesting(int seed)
+    {
+        _testSeed = seed;
+        _random = new Random(seed);
+    }
 
     /// <summary>
     /// @add: signed 16-bit addition. Overflow wraps per two's complement.
@@ -220,8 +231,8 @@ public class ArithmeticOps
             return 0;
         }
 
-        // range == 0: re-randomize
-        _random = new Random();
+        if (!_testSeed.HasValue)
+            _random = new Random();
         return 0;
     }
 }
