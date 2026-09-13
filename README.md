@@ -175,8 +175,6 @@ The test suite includes:
 - **V6 without Blorb**: V6 games (Arthur, Journey, Shogun) crash
   during startup without Blorb picture resources — their init
   routines configure screen/picture data that requires loaded images
-- **Save/restore**: Quetzal read/write is implemented but not yet
-  wired into the `@save`/`@restore` opcodes (stubs return failure)
 - **Sound playback**: Sound engine interface is defined but no audio
   backend is connected yet
 - **Timed input**: `@read` with timeout callback is parsed but the
