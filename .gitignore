@@ -12,6 +12,7 @@ stories/*
 # Walkthrough files (copyrighted)
 examples/bally-walkthru*.txt
 examples/bureau-walkthru.txt
+examples/sherlock-walkthru.txt
 examples/zork_i_walkthru.txt
 
 # Debug output from walkthrough tests
@@ -19,6 +20,8 @@ tests/ZMachine.Tests/ballyhoo_output.txt
 tests/ZMachine.Tests/zork_output.txt
 tests/ZMachine.Tests/bureau_output.txt
 tests/ZMachine.Tests/bureau_walkthrough_output.txt
+tests/ZMachine.Tests/sherlock_output.txt
+tests/ZMachine.Tests/sherlock_walkthrough_output.txt
 tests/ZMachine.Tests/zork_seed_scan.txt
 tests/ZMachine.Tests/zork_explore.txt
 
