@@ -24,6 +24,11 @@ tests/ZMachine.Tests/sherlock_output.txt
 tests/ZMachine.Tests/sherlock_walkthrough_output.txt
 tests/ZMachine.Tests/zork_seed_scan.txt
 tests/ZMachine.Tests/zork_explore.txt
+tests/ZMachine.Tests/enchanter_walkthrough_output.txt
+
+# Reference material for Enchanter (manual and Invisiclues) - not redistributable
+examples/Enchanter.pdf
+examples/Enchanter_Invisiclues.html
 
 # dotenv files
 .env
