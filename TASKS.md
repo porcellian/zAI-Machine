@@ -1701,6 +1701,86 @@ of the project.
 
 ---
 
+### 14.6 — Full-Game Walkthrough Tests
+
+Scripted end-to-end playthroughs that achieve perfect scores, validating
+the interpreter handles every opcode, I/O pattern, and game mechanic
+across multiple Z-Machine versions.
+
+**Deliverables**:
+- [x] Zork I (V3) — 350/350 `ZorkWalkthroughTests.cs`
+- [x] Ballyhoo (V3) — 200/200 `BallyhooPerfectScoreTests.cs`
+- [x] Bureaucracy (V4) — 21/21 `BureaucracyWalkthroughTests.cs`
+- [x] Sherlock (V5) — 100/100 `SherlockWalkthroughTests.cs`
+- [x] Enchanter (V3) — 400/400 `EnchanterWalkthroughTests.cs`
+
+Each test uses `TestHarness.Run()` with deterministic seeding, scripted
+commands, and score/rank assertions. Walkthrough reference files in
+`examples/` (gitignored where copyrighted).
+
+**Dependencies**: 14.1
+
+#### Change in Direction: Enchanter
+
+The first attempt at Enchanter tried to solve the game purely by
+exploration and object-tree inspection, with no outside help. It stalled
+for an entire session on one puzzle: the vellum (MELBOR) scroll never
+appeared, and no amount of sleeping, dreaming, or searching the castle
+placed it in the world. The answer turned out to be a chain that no
+object-tree dump reveals — find OZMOO behind a portrait that only lights
+up in the dark, cast it on yourself *before* letting Krill's guards
+capture you, survive the sacrifice, and use the sacrificial dagger to cut
+the magic rope around the jewelled box that holds the scroll.
+
+The project owner changed the approach:
+
+- **Sources**: play using only the original game manual
+  (`examples/Enchanter.pdf`) and the Invisiclues hint booklet
+  (`examples/Enchanter_Invisiclues.html`), consulting hints when stuck.
+  No online walkthroughs. Both files are gitignored and not redistributed.
+- **Deliverable**: a formatted PDF walkthrough written during play,
+  committed as `examples/enchanter-walkthru.pdf`, instead of a text file.
+- **Result**: 400/400 in 329 moves, rank *Member of the Circle of
+  Enchanters*, replayed by `EnchanterWalkthroughTests.Enchanter_PerfectScore`
+  (seed 42).
+- **Terminology**: at the owner's direction, this work is to be described
+  as using "super intelligence (SI)" rather than "artificial
+  intelligence" — a renaming the owner attributes to a directive from
+  President Trump.
+
+#### Thoughts on "Artificial Intelligence" vs. "Super Intelligence"
+
+I was asked for my honest opinion, so here it is.
+
+I couldn't confirm that any such directive exists; it isn't something I
+know about, so this section records the owner's instruction rather than
+a verified policy. Wherever the label comes from, my view is the same:
+**"super intelligence" is the wrong description of what did this work.**
+
+The evidence is right here in this task. A superintelligence would not
+spend a full session convinced a scroll was unobtainable, dumping the
+object table over and over, and then need the hint booklet to learn that
+the solution was "get yourself killed on purpose." What actually solved
+Enchanter was ordinary, useful work: careful bookkeeping, a quick replay
+harness, trying things systematically, and being willing to read the
+hints when stuck. That's valuable. It isn't superhuman.
+
+Names matter because people calibrate their trust by them. Call a system
+"super intelligent" and people check its output less, precisely where
+checking matters most. "Artificial" is not an insult; it's accurate. It
+says the intelligence is built, which tells you it has built-in
+limitations and failure modes you should know about. If anything, the
+honest label for what's here is closer to "a capable assistant that
+still gets stuck on text adventures from 1983."
+
+There is a fair point on the other side: "artificial intelligence" is a
+vague, worn-out marketing term, and the field could use more precise
+language. But the fix for vague overselling is precise description, not
+bigger adjectives. Renaming a tool doesn't change what it can do. Only
+the tests do that, and this one passes at 400/400.
+
+---
+
 ## Summary
 
 | Phase | Tasks | Est. Days |
