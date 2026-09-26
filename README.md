@@ -36,12 +36,6 @@ with SkiaSharp on Avalonia UI.
 - **Structured error reporting** — `ZMachineException` with PC
   address and opcode context for every illegal operation
 
-## Screenshots
-
-| C64 Classic | Modern C64 |
-|---|---|
-| ![C64 Classic](examples/zork_i_c64.png) | ![Modern C64](examples/zork_i_modC64.jpg) |
-
 ## Requirements
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) or later
