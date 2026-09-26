@@ -1713,6 +1713,7 @@ across multiple Z-Machine versions.
 - [x] Bureaucracy (V4) — 21/21 `BureaucracyWalkthroughTests.cs`
 - [x] Sherlock (V5) — 100/100 `SherlockWalkthroughTests.cs`
 - [x] Enchanter (V3) — 400/400 `EnchanterWalkthroughTests.cs`
+- [x] Sorcerer (V3) — 400/400 `SorcererWalkthroughTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -1778,6 +1779,36 @@ vague, worn-out marketing term, and the field could use more precise
 language. But the fix for vague overselling is precise description, not
 bigger adjectives. Renaming a tool doesn't change what it can do. Only
 the tests do that, and this one passes at 400/400.
+
+#### Sorcerer
+
+Solved to 400/400 in 587 moves (rank *Leader of the Circle of
+Enchanters*), replayed by `SorcererWalkthroughTests.Sorcerer_PerfectScore`
+with seed 42. The walkthrough is committed as
+`examples/sorcerer-walkthru.pdf`; the game's *Popular Enchanting* folio
+(`examples/sorcererfolio.pdf`) was the only outside reference, is
+gitignored, and is not redistributed. No hint guide or online
+walkthrough was used.
+
+To be transparent about method: without a hint book, the stuck points
+were resolved with this project's own developer tooling rather than
+insight alone:
+
+- The **object tree** and its room-exit properties gave a true map and
+  revealed which exits were conditional.
+- The **disassembler** plus an instruction trace explained the key
+  puzzles: YONK must augment MALYON before the dragon carving wakes;
+  guano in the cannon frees the YONK scroll; the time-loop "paradox"
+  check requires telling your younger self the dial combination; and
+  giving him your spell book first is how you get it back dry.
+- The trunk code, which normally comes from the paper Infotater that
+  isn't in the folio, was found by **brute force** over button
+  sequences (red, gray, purple, gray, red for this seed).
+- The glass maze was mapped automatically with a BFS over the bat's
+  sonar reports.
+
+Seed-dependent values are hard-coded in the test: the trunk code, the
+dial combination (3), and the casino jackpot on the 25th pull.
 
 ---
 
