@@ -27,12 +27,15 @@ tests/ZMachine.Tests/zork_explore.txt
 tests/ZMachine.Tests/enchanter_walkthrough_output.txt
 tests/ZMachine.Tests/sorcerer_walkthrough_output.txt
 tests/ZMachine.Tests/spellbreaker_walkthrough_output.txt
+tests/ZMachine.Tests/trinity_walkthrough_output.txt
+tests/ZMachine.Tests/trinity_walkthrough_opcodes.txt
 
 # Reference material (game manuals, hint guides) - not redistributable
 examples/Enchanter.pdf
 examples/Enchanter_Invisiclues.html
 examples/sorcererfolio.pdf
 examples/Spellbreaker.pdf
+examples/trinity.pdf
 
 # dotenv files
 .env
