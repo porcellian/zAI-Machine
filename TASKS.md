@@ -1714,6 +1714,7 @@ across multiple Z-Machine versions.
 - [x] Sherlock (V5) — 100/100 `SherlockWalkthroughTests.cs`
 - [x] Enchanter (V3) — 400/400 `EnchanterWalkthroughTests.cs`
 - [x] Sorcerer (V3) — 400/400 `SorcererWalkthroughTests.cs`
+- [x] Spellbreaker (V3) — 600/600 `SpellbreakerWalkthroughTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -1809,6 +1810,43 @@ insight alone:
 
 Seed-dependent values are hard-coded in the test: the trunk code, the
 dial combination (3), and the casino jackpot on the 25th pull.
+
+#### Spellbreaker
+
+Solved to 600/600 in 560 moves (rank *Scientist*), replayed by
+`SpellbreakerWalkthroughTests.Spellbreaker_PerfectScore` with seed 42.
+The walkthrough is committed as `examples/spellbreaker-walkthru.pdf`.
+The game's instruction manual (`examples/Spellbreaker.pdf`) was the only
+outside reference; it is gitignored and not redistributed. No hint guide
+or online walkthrough was used.
+
+As with Sorcerer, the stuck points were resolved with this project's own
+developer tooling rather than insight alone:
+
+- The **object tree** located every cube and hub (each hub room's
+  property 5 names its cube), and showed that the Castle is a holding
+  area for objects that enter play later.
+- The **disassembler** and instruction traces explained the hardest
+  mechanics:
+  - the gold box is a portal for the Water Room's east exit;
+  - the moldy book yields SNAVIG after CASKLY;
+  - the brown rock on the Plain can only be caught through the 4-1
+    diagonal (a parity argument), found by an automated BFS over rock
+    positions;
+  - the vault alarm fires on the third JINDAK;
+  - the two paradox checks require leaving your own spell book locked in
+    the past cabinet, and the zipper, holding only the flimsy scroll,
+    alone in the past Ruins;
+  - in the endgame you must provoke the shadow's freeze early (ESPNIS the
+    shadow) so it thaws in time for GIRGOL, then swap the sack for the
+    magic cube in the tesseract.
+- Belboz's security question has six possible answers, drawn from
+  feelies that aren't in the manual. The answer was read from the game's
+  own answer table ("Dimithio" for the fireworks question this seed asks).
+
+Seed-dependent details are hard-coded in the test: which casts misfire
+(the script memorizes spares), Belboz's question, the brown rock's moves,
+and the odd vault cube (x7).
 
 ---
 
