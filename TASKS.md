@@ -1715,6 +1715,7 @@ across multiple Z-Machine versions.
 - [x] Enchanter (V3) — 400/400 `EnchanterWalkthroughTests.cs`
 - [x] Sorcerer (V3) — 400/400 `SorcererWalkthroughTests.cs`
 - [x] Spellbreaker (V3) — 600/600 `SpellbreakerWalkthroughTests.cs`
+- [x] Trinity (V4) — 100/100 `TrinityWalkthroughTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -1847,6 +1848,48 @@ developer tooling rather than insight alone:
 Seed-dependent details are hard-coded in the test: which casts misfire
 (the script memorizes spares), Belboz's question, the brown rock's moves,
 and the odd vault cube (x7).
+
+#### Trinity
+
+Solved to 100/100 in 600 moves (final rank *Tourist*: the game ends back
+at Palace Gate), replayed by `TrinityWalkthroughTests.Trinity_PerfectScore`
+with seed 42. The walkthrough is committed as
+`examples/trinity-walkthru.pdf` and includes an **opcode census**. The
+test decodes every executed instruction with the `Disassembler` and
+tallies it by mnemonic: 61 distinct opcodes over about 986,000
+instructions. These include the V4-only `read_char` and `scan_table`
+and the split-window/cursor opcodes. The game manual
+(`examples/trinity.pdf`) was the only outside reference; it is
+gitignored and not redistributed. No hint guide or online walkthrough
+was used.
+
+As with Sorcerer and Spellbreaker, the stuck points were resolved with
+this project's own developer tooling rather than insight alone:
+
+- The **object tree** and exit properties mapped the hub, the seven
+  toadstool destinations and the Trinity site. Reading the globals
+  showed that the sundial shadow's position and the selected symbol
+  decide which door opens. A small search tool then computed the exact
+  number of WAITs before PUSH LEVER freezes each door open.
+- The **disassembler** explained the hardest puzzles:
+  - the skink can only be caught with light in the crevice *and* a lit
+    lantern blocking the tunnel;
+  - the "crescent moon" in the magpie's recipe is visible only from
+    Earth orbit, which forced Nevada to come before the orbit trip;
+  - the roadrunner fetches things and loves crumbs;
+  - on the tower, observers allow only a fixed number of unlit turns
+    before scrubbing the shot. The searchlight swings away only while the
+    German shepherd barks at the roadrunner, so crumbs left at the
+    blockhouse delay the roadrunner just long enough to climb unseen;
+  - the wire must be cut *after* the auto-sequencer takes over, or the
+    shot is scrubbed.
+- Scoring call sites were enumerated from the disassembly to account for
+  all 100 points.
+
+Seed-dependent details are hard-coded in the test: the jeep radio channel
+(49), the cardboard legend (`RD=POS BL=INF ST=GND WH=DET`, so the
+striped ground wire is cut), and every turn-sensitive wait on the
+sundial and on the 15-second Trinity clock.
 
 ---
 
