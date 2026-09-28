@@ -1716,6 +1716,7 @@ across multiple Z-Machine versions.
 - [x] Sorcerer (V3) — 400/400 `SorcererWalkthroughTests.cs`
 - [x] Spellbreaker (V3) — 600/600 `SpellbreakerWalkthroughTests.cs`
 - [x] Trinity (V4) — 100/100 `TrinityWalkthroughTests.cs`
+- [x] Zork II (V3) — 400/400 `ZorkIIWalkthroughTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -1890,6 +1891,45 @@ Seed-dependent details are hard-coded in the test: the jeep radio channel
 (49), the cardboard legend (`RD=POS BL=INF ST=GND WH=DET`, so the
 striped ground wire is cut), and every turn-sensitive wait on the
 sundial and on the 15-second Trinity clock.
+
+#### Zork II
+
+Solved to 400/400 in 454 moves (rank *Master Adventurer*, ending on the
+stairs down to Zork III), replayed by
+`ZorkIIWalkthroughTests.ZorkII_PerfectScore` with seed 42. The
+walkthrough is committed as `examples/zork2-walkthru.pdf` and includes
+an opcode census: 52 distinct opcodes over about 373,000 instructions.
+The manual (`examples/zork2.pdf`) was the only outside reference; it is
+gitignored and not redistributed. It is the generic Zork instruction
+booklet and contains no puzzle hints. No hint guide or online
+walkthrough was used.
+
+As with the earlier games, the hard parts were resolved with this
+project's own tooling rather than insight alone:
+
+- The **object tree** gave the full map, showed which rooms are lit (the
+  lamp lasts only about 270 turns), and showed the treasures' point
+  values (property 8).
+- The **disassembler** explained the key mechanics:
+  - the Carousel Room honours your direction only 20% of the time until
+    the robot pushes the triangular button, which also flips the Low
+    Room into a spinning state;
+  - the Bank of Zork's curtain leads to the room matching the direction
+    you entered the depository from (north means the Small Room), and
+    each room's "thin" wall leads back;
+  - the bucket rises with water in it and sinks when the water is
+    scooped out;
+  - a closed receptacle lets the balloon descend;
+  - the demon's fee is ten gifts;
+  - the oddly-angled rooms open the way down after the moves SE, NE,
+    NW, SW.
+- The Wizard's random spells (Fence, Feeble, Fall) were handled by a
+  search tool that inserts WAITs at chosen points until his visits
+  stop interfering.
+
+Seed-dependent details are hard-coded in the test: every WAIT that
+steers the carousel or the Wizard, the princess's pace, and the Low Room
+exit.
 
 ---
 
