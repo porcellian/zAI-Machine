@@ -31,6 +31,8 @@ tests/ZMachine.Tests/trinity_walkthrough_output.txt
 tests/ZMachine.Tests/trinity_walkthrough_opcodes.txt
 tests/ZMachine.Tests/zork2_walkthrough_output.txt
 tests/ZMachine.Tests/zork2_walkthrough_opcodes.txt
+tests/ZMachine.Tests/zork3_walkthrough_output.txt
+tests/ZMachine.Tests/zork3_walkthrough_opcodes.txt
 
 # Reference material (game manuals, hint guides) - not redistributable
 examples/Enchanter.pdf
@@ -39,6 +41,7 @@ examples/sorcererfolio.pdf
 examples/Spellbreaker.pdf
 examples/trinity.pdf
 examples/zork2.pdf
+examples/zork3.pdf
 
 # dotenv files
 .env
