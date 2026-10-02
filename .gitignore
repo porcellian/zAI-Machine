@@ -33,6 +33,8 @@ tests/ZMachine.Tests/zork2_walkthrough_output.txt
 tests/ZMachine.Tests/zork2_walkthrough_opcodes.txt
 tests/ZMachine.Tests/zork3_walkthrough_output.txt
 tests/ZMachine.Tests/zork3_walkthrough_opcodes.txt
+tests/ZMachine.Tests/sherlock_cd_walkthrough_output.txt
+tests/ZMachine.Tests/sherlock_cd_walkthrough_opcodes.txt
 
 # Reference material (game manuals, hint guides) - not redistributable
 examples/Enchanter.pdf
