@@ -123,6 +123,11 @@ public class OutputStreamManager
             return;
         }
 
+        // ZSpec S3.8.2.1 — ZSCII 11 is the V6 "sentence space", output only;
+        // show it as a space (stream 3 above keeps the raw code).
+        if (text.Contains('\v'))
+            text = text.Replace('\v', ' ');
+
         if (_stream1Active)
             ScreenPrint?.Invoke(text);
 

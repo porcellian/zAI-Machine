@@ -382,7 +382,7 @@ public class MouseTests
 
     /// <summary>
     /// Verifies that mouse window -1 accepts clicks anywhere.
-    /// EXT:22 — -1 means any window.
+    /// EXT:23 — -1 means any window.
     /// </summary>
     [Fact]
     public void ShouldDeliverClick_MouseWindowMinusOne_AlwaysTrue()

@@ -15,24 +15,26 @@ public class BufferScreenTests
     #region Disassembler — EXT Mnemonics
 
     /// <summary>
-    /// Verifies that EXT:24 disassembles as "make_menu".
+    /// Verifies that EXT:27 disassembles as "make_menu".
+    /// ZSpec S15 — make_menu is EXT:27 ($1B).
     /// </summary>
     [Fact]
-    public void Disassembler_EXT24_MakeMenu()
+    public void Disassembler_EXT27_MakeMenu()
     {
-        var mem = CreateDisassemblerMemory(extOpcode: 24, operandCount: 2);
+        var mem = CreateDisassemblerMemory(extOpcode: 27, operandCount: 2);
         var disasm = new Disassembler(mem);
         var line = disasm.DisassembleAt(0x40);
         Assert.Contains("make_menu", line.Mnemonic);
     }
 
     /// <summary>
-    /// Verifies that EXT:25 disassembles as "picture_table".
+    /// Verifies that EXT:28 disassembles as "picture_table".
+    /// ZSpec S15 — picture_table is EXT:28 ($1C).
     /// </summary>
     [Fact]
-    public void Disassembler_EXT25_PictureTable()
+    public void Disassembler_EXT28_PictureTable()
     {
-        var mem = CreateDisassemblerMemory(extOpcode: 25, operandCount: 1);
+        var mem = CreateDisassemblerMemory(extOpcode: 28, operandCount: 1);
         var disasm = new Disassembler(mem);
         var line = disasm.DisassembleAt(0x40);
         Assert.Contains("picture_table", line.Mnemonic);

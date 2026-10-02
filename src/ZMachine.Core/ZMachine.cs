@@ -911,6 +911,10 @@ public class Interpreter
             case 31: // check_arg_count (branch)
                 InstructionDecoder.DecodeBranch(_memory, ref inst);
                 break;
+            case 9: // pull: V6 stores its result (pull [stack] → result)
+                if (_version == 6)
+                    InstructionDecoder.DecodeStore(_memory, ref inst);
+                break;
         }
 
         var ops = ResolveOperands(ref inst);
@@ -950,7 +954,12 @@ public class Interpreter
                 VariableMemoryOps.Push(_state, ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
-            case 9: // pull (indirect var ref)
+            case 9: // pull (indirect var ref); V6: pull [stack] → result
+                if (_version == 6)
+                {
+                    StoreAndAdvance(ref inst, ExecutePullV6(ops, inst.OperandCount));
+                    break;
+                }
                 VariableMemoryOps.Pull(_state, (byte)ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
@@ -1074,7 +1083,9 @@ public class Interpreter
             case 29: // buffer_screen (store)
                 InstructionDecoder.DecodeStore(_memory, ref inst);
                 break;
-            case 6: // picture_data — branch only (no store)
+            case 6:  // picture_data — branch only (no store)
+            case 24: // push_stack — branch only
+            case 27: // make_menu — branch only
                 InstructionDecoder.DecodeBranch(_memory, ref inst);
                 break;
         }
@@ -1195,20 +1206,45 @@ public class Interpreter
                 StoreAndAdvance(ref inst,
                     (ushort)(_v6Windows?.GetWindProp(ops[0], ops[1]) ?? 0));
                 break;
-            case 20: // put_wind_prop window property value
-                _v6Windows?.PutWindProp(ops[0], ops[1], ops[2]);
-                _state.PC = inst.NextAddress;
-                break;
-            case 21: // scroll_window window pixels
+            // ZSpec S15 — EXT:20–28 are numbered scroll_window, pop_stack,
+            // read_mouse, mouse_window, push_stack, put_wind_prop,
+            // print_form, make_menu, picture_table. (Shogun's first
+            // instruction is mouse_window -1, which exposed an off-by-one.)
+            case 20: // scroll_window window pixels
                 _v6Windows?.ScrollWindow(ops[0], (short)ops[1]);
                 _state.PC = inst.NextAddress;
                 break;
-            case 22: // mouse_window window
+            case 21: // pop_stack items [stack]
+                ExecutePopStack(ops, inst.OperandCount);
+                _state.PC = inst.NextAddress;
+                break;
+            case 22: // read_mouse array
+                _mouseState.WriteToArray(_memory, ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 23: // mouse_window window
                 _v6Windows?.SetMouseWindow((short)ops[0]);
                 _state.PC = inst.NextAddress;
                 break;
-            case 23: // read_mouse array
-                _mouseState.WriteToArray(_memory, ops[0]);
+            case 24: // push_stack value stack ?(label)
+                BranchAndAdvance(ref inst, ExecutePushStack(ops[0], ops[1]));
+                break;
+            case 25: // put_wind_prop window property value
+                _v6Windows?.PutWindProp(ops[0], ops[1], ops[2]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 26: // print_form formatted-table
+                ExecutePrintForm(ops[0]);
+                _state.PC = inst.NextAddress;
+                break;
+            case 27: // make_menu number table ?(label)
+                // ZSpec S15 — branch if the menu was created. This
+                // interpreter has no menu bar, so the game falls back to
+                // its typed-command interface.
+                BranchAndAdvance(ref inst, false);
+                break;
+            case 28: // picture_table table
+                // ZSpec S15 — only a hint to pre-load pictures; nothing to do.
                 _state.PC = inst.NextAddress;
                 break;
             case 29: // buffer_screen mode → result
@@ -1225,6 +1261,82 @@ public class Interpreter
             default:
                 UnknownOpcode(ref inst);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// V6 @pull [stack] → result — pops the game stack, or a user stack
+    /// when one is given.
+    /// </summary>
+    /// <remarks>
+    /// ZSpec S15 — in V6 @pull is a store instruction. Popping a user stack
+    /// increments its free-slot count and reads the slot it now indexes.
+    /// </remarks>
+    private ushort ExecutePullV6(ushort[] ops, int operandCount)
+    {
+        if (operandCount == 0)
+            return _state.ReadVariable(0);
+        ushort stack = ops[0];
+        ushort free = (ushort)(_memory.ReadWord(stack) + 1);
+        _memory.WriteWord(stack, free);
+        return _memory.ReadWord(stack + 2 * free);
+    }
+
+    /// <summary>
+    /// EXT:21 @pop_stack items [stack] — discards items from the game stack,
+    /// or from a V6 user stack whose first word counts its free slots.
+    /// </summary>
+    private void ExecutePopStack(ushort[] ops, int operandCount)
+    {
+        int items = ops[0];
+        if (operandCount > 1)
+        {
+            ushort stack = ops[1];
+            _memory.WriteWord(stack, (ushort)(_memory.ReadWord(stack) + items));
+            return;
+        }
+        for (int i = 0; i < items; i++)
+            _state.ReadVariable(0);
+    }
+
+    /// <summary>
+    /// EXT:24 @push_stack value stack — pushes onto a V6 user stack.
+    /// </summary>
+    /// <returns>True if there was a free slot (the opcode branches on success).</returns>
+    /// <remarks>
+    /// ZSpec S15 — word 0 of a user stack holds the number of free slots;
+    /// the value goes into the slot at that index, then the count drops.
+    /// </remarks>
+    private bool ExecutePushStack(ushort value, ushort stack)
+    {
+        ushort free = _memory.ReadWord(stack);
+        if (free == 0)
+            return false;
+        _memory.WriteWord(stack + 2 * free, value);
+        _memory.WriteWord(stack, (ushort)(free - 1));
+        return true;
+    }
+
+    /// <summary>
+    /// EXT:26 @print_form table — prints a formatted table: a series of
+    /// lines, each a length word followed by that many ZSCII bytes, ended
+    /// by a zero length. Lines after the first start on a new line.
+    /// </summary>
+    private void ExecutePrintForm(ushort table)
+    {
+        int addr = table;
+        bool first = true;
+        while (true)
+        {
+            int count = _memory.ReadWord(addr);
+            addr += 2;
+            if (count == 0)
+                break;
+            if (!first)
+                _textOutputOps.NewLine();
+            for (int i = 0; i < count; i++)
+                _textOutputOps.PrintChar(_memory.ReadByte(addr++));
+            first = false;
         }
     }
 
