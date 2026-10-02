@@ -1718,6 +1718,7 @@ across multiple Z-Machine versions.
 - [x] Trinity (V4) — 100/100 `TrinityWalkthroughTests.cs`
 - [x] Zork II (V3) — 400/400 `ZorkIIWalkthroughTests.cs`
 - [x] Zork III (V3) — 7/7 `ZorkIIIWalkthroughTests.cs`
+- [x] Sherlock (V5), independent re-solve with opcode census — 100/100 `SherlockConsultingDetectiveTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -1980,6 +1981,43 @@ Seed-dependent details are hard-coded in the test:
 - the two HELLOs that make the 50% amulet grab succeed;
 - the Vista indicator phase, the guards' departure, and the earthquake
   wait.
+
+#### Sherlock (independent re-solve)
+
+Sherlock was solved a second time, independently of the existing
+`SherlockWalkthroughTests.cs` and its reference text, whose files were
+deliberately not opened. The result is 100/100 (rank *Consulting
+Detective*), with the regalia delivered at 8:55 a.m. on Monday. The run is
+replayed by `SherlockConsultingDetectiveTests.Sherlock_ConsultingDetective`
+with seed 42. The walkthrough is committed as
+`examples/sherlock-walkthru.pdf` with an opcode census: 72 distinct
+opcodes, including the V5 call family, `aread` with timed input,
+`read_char`, `save_undo` and `log_shift`.
+
+No manual was supplied for this game, the in-game HINT system was never
+used, and no online walkthrough was consulted. The hard parts were
+resolved with this project's own tooling.
+
+The project's `ObjectTreeViewer` hung on this V5 story, so a small
+object-table parser stood in for it. Together with the disassembler it
+revealed:
+
+- the Thames tide windows that make the moss (opal) reachable;
+- the four gems the bank guard wants;
+- the stethoscope and dial sound cues (R, R, L, R, R);
+- the vault's box 600 (1666 − 1066);
+- the gem inscriptions (carnation, Swordfish, 2:00 a.m. on 20/6/87,
+  "Give me to Akbar");
+- Akbar's Monday-only appointment;
+- the lair condition (both villains tied before Watson's breath runs out);
+- the fixed 9:00 a.m. deadline event, which makes the two-blast hansom
+  cab essential.
+
+Seed-dependent details are hard-coded in the test:
+
+- Mycroft's random Tower password ("Cleves");
+- the positions of the keypress answers (K, N, Y) for Big Ben's chimes
+  and the WAIT interruptions.
 
 ---
 
