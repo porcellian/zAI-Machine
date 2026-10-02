@@ -1717,6 +1717,7 @@ across multiple Z-Machine versions.
 - [x] Spellbreaker (V3) — 600/600 `SpellbreakerWalkthroughTests.cs`
 - [x] Trinity (V4) — 100/100 `TrinityWalkthroughTests.cs`
 - [x] Zork II (V3) — 400/400 `ZorkIIWalkthroughTests.cs`
+- [x] Zork III (V3) — 7/7 `ZorkIIIWalkthroughTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -1930,6 +1931,55 @@ project's own tooling rather than insight alone:
 Seed-dependent details are hard-coded in the test: every WAIT that
 steers the carousel or the Wizard, the princess's pace, and the Low Room
 exit.
+
+#### Zork III
+
+Finished with the full potential of 7/7 in 249 moves and no deaths,
+ending in the Treasury of Zork. The run is replayed by
+`ZorkIIIWalkthroughTests.ZorkIII_FullPotential` with seed 42. The
+walkthrough is committed as `examples/zork3-walkthru.pdf` and includes
+an opcode census: 53 distinct opcodes over about 201,000 instructions.
+The manual (`examples/zork3.pdf`) was the only outside reference; it is
+gitignored and not redistributed. No hint guide or online walkthrough
+was used.
+
+As with the earlier games, the hard parts were resolved with this
+project's own tooling rather than insight alone:
+
+- The **disassembler** showed what the Dungeon Master checks when you
+  knock. He admits you only if you carry seven objects: the staff,
+  amulet, hood, cloak, book, strange key and ring. That revealed two
+  things:
+  - the Royal Puzzle's steel-door slot is a trap, because it confiscates
+    the book;
+  - the key in the Key Room is required.
+
+  The disassembler also showed:
+  - the ladder exit from the puzzle (stand on the entrance square with
+    the ladder wall to the east);
+  - the lake turning the lamp and torch into dead copies;
+  - the earthquake timer, which breaks the aqueduct.
+- The **object tree** located the Frobozz Magic Grue Repellent in
+  Room 8, which is reachable only through the Scenic Vista table, and
+  showed the Dark Places are unlit.
+
+  The route chains two table trips: Room 8 for the repellent, then the
+  Damp Passage to leave the lit torch. It sprays the repellent, swims to
+  the Southern Shore, and returns by the manhole, aqueduct and water
+  slide before the earthquake.
+- **Globals** gave the Royal Puzzle's 6×6 wall grid (G68). A
+  breadth-first search over that grid produced the 44-move push sequence
+  that collects the book and brings the ladder to the entrance.
+- The mirror box was solved by experiment. Opening the pine panel
+  anywhere but facing north lets the Guardians of Zork kill you.
+
+Seed-dependent details are hard-coded in the test:
+
+- the single HELLO before the fight, and the 13 attacks that leave the
+  hooded figure defenseless;
+- the two HELLOs that make the 50% amulet grab succeed;
+- the Vista indicator phase, the guards' departure, and the earthquake
+  wait.
 
 ---
 
