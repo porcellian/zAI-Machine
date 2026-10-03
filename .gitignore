@@ -522,3 +522,5 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+tests/ZMachine.Tests/shogun_walkthrough_output.txt
+tests/ZMachine.Tests/shogun_walkthrough_opcodes.txt
