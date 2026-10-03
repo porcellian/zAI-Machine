@@ -381,12 +381,11 @@ public class Disassembler
         13 => "set_true_colour",
         16 => "move_window", 17 => "window_size",
         18 => "window_style", 19 => "get_wind_prop",
-        20 => "put_wind_prop", 21 => "scroll_window",
-        22 => "mouse_window",
-        23 => "read_mouse",
-        24 => "make_menu",
-        25 => "picture_table",
-        29 => "buffer_screen",
+        20 => "scroll_window", 21 => "pop_stack",
+        22 => "read_mouse", 23 => "mouse_window",
+        24 => "push_stack", 25 => "put_wind_prop",
+        26 => "print_form", 27 => "make_menu",
+        28 => "picture_table", 29 => "buffer_screen",
         _ => $"EXT:{op}"
     };
 
@@ -475,6 +474,10 @@ public class Disassembler
                     case 31:
                         InstructionDecoder.DecodeBranch(_memory, ref inst);
                         break;
+                    case 9: // pull stores its result in V6
+                        if (_version == 6)
+                            InstructionDecoder.DecodeStore(_memory, ref inst);
+                        break;
                 }
                 break;
 
@@ -486,6 +489,11 @@ public class Disassembler
                     case 19: // get_wind_prop (store)
                     case 29: // buffer_screen (store)
                         InstructionDecoder.DecodeStore(_memory, ref inst);
+                        break;
+                    case 6:  // picture_data (branch)
+                    case 24: // push_stack (branch)
+                    case 27: // make_menu (branch)
+                        InstructionDecoder.DecodeBranch(_memory, ref inst);
                         break;
                 }
                 break;

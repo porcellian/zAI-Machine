@@ -101,7 +101,7 @@ public class V6WindowManager
     }
 
     /// <summary>
-    /// EXT:20 @put_wind_prop window property value.
+    /// EXT:25 @put_wind_prop window property value.
     /// Sets a writable window property (0–15).
     /// Properties 16–17 are read-only and silently ignored.
     /// </summary>
@@ -176,7 +176,7 @@ public class V6WindowManager
     }
 
     /// <summary>
-    /// EXT:21 @scroll_window window pixels.
+    /// EXT:20 @scroll_window window pixels.
     /// Scrolls the contents of a window by the given number of pixels.
     /// Positive = scroll up, negative = scroll down.
     /// </summary>
@@ -191,7 +191,7 @@ public class V6WindowManager
     }
 
     /// <summary>
-    /// EXT:22 @mouse_window window.
+    /// EXT:23 @mouse_window window.
     /// Sets the mouse window. Mouse clicks outside this window
     /// are ignored for input purposes. -1 = any window.
     /// </summary>

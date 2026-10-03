@@ -458,7 +458,7 @@ public class V6WindowTests
 
     /// <summary>
     /// Verifies that PutWindProp writes a writable window property.
-    /// EXT:20 @put_wind_prop.
+    /// EXT:25 @put_wind_prop.
     /// </summary>
     [Fact]
     public void PutWindProp_WritesProperty()
@@ -506,7 +506,7 @@ public class V6WindowTests
 
     /// <summary>
     /// Verifies that SetMouseWindow changes the mouse window.
-    /// EXT:22 @mouse_window.
+    /// EXT:23 @mouse_window.
     /// </summary>
     [Fact]
     public void SetMouseWindow_ChangesMouseWindow()
@@ -518,7 +518,7 @@ public class V6WindowTests
 
     /// <summary>
     /// Verifies that SetMouseWindow accepts -1 for "any window".
-    /// EXT:22 — -1 means mouse clicks accepted in any window.
+    /// EXT:23 — -1 means mouse clicks accepted in any window.
     /// </summary>
     [Fact]
     public void SetMouseWindow_NegativeOne_AcceptsAnyWindow()

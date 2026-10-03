@@ -202,22 +202,20 @@ public class InfocomCompatibilityTests
     #region V6 Stories
 
     /// <summary>
-    /// Journey (V6) — without Blorb picture resources, the game crashes
-    /// during startup with a static-memory write error. This test
-    /// verifies that crash is the expected out-of-bounds write, not an
-    /// opcode or decoding failure.
+    /// Journey (V6) — starts and accepts commands without picture
+    /// resources. It used to crash at once with a static-memory write:
+    /// its startup @mouse_window -1 (EXT:23) was dispatched as @read_mouse,
+    /// which wrote the mouse state to address $FFFF.
     /// </summary>
     [SkippableFact]
-    public void Journey_CrashesWithoutBlorb()
+    public void Journey_StartsWithoutBlorb()
     {
         var path = Path.Combine(StoriesDir, "Journey", "STORY.DATA.z6");
         Skip.IfNot(File.Exists(path), "Journey/STORY.DATA.z6 not found in stories/ (gitignored)");
 
         var result = RunStory(path, ["quit", "y"]);
 
-        Assert.True(result.Crashed, "V6 game should crash without Blorb resources");
-        Assert.Contains("static", result.Error!,
-            StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.Crashed, $"Journey crashed: {result.Error}");
     }
 
     #endregion
