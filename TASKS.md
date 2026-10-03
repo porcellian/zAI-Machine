@@ -1719,6 +1719,7 @@ across multiple Z-Machine versions.
 - [x] Zork II (V3) — 400/400 `ZorkIIWalkthroughTests.cs`
 - [x] Zork III (V3) — 7/7 `ZorkIIIWalkthroughTests.cs`
 - [x] Sherlock (V5), independent re-solve with opcode census — 100/100 `SherlockConsultingDetectiveTests.cs`
+- [x] Shogun (V6) — 420/420 `ShogunWalkthroughTests.cs`
 
 Each test uses `TestHarness.Run()` with deterministic seeding, scripted
 commands, and score/rank assertions. Walkthrough reference files in
@@ -2018,6 +2019,47 @@ Seed-dependent details are hard-coded in the test:
 - Mycroft's random Tower password ("Cleves");
 - the positions of the keypress answers (K, N, Y) for Big Ben's chimes
   and the WAIT interruptions.
+
+#### Shogun
+
+Shogun (V6) was solved to 420/420 (rank *Regent*). All eighteen scored
+scenes finish at their maximum, and nobody dies on the route. The run is
+replayed by `ShogunWalkthroughTests.Shogun_PerfectScore` with seed 42. The
+walkthrough is committed as `examples/shogun-walkthru.pdf` with an opcode
+census: 90 distinct opcodes over about 1.4 million instructions. They
+include the V6 window and picture family and the user-stack opcodes
+`push_stack`, `pop_stack` and V6 `pull`.
+
+Sources: the game manual (`stories/Shogun/Shogun_Manual`) and this
+project's own tooling. The in-game HINT system and online walkthroughs
+were not used.
+
+Interpreter bugs found and fixed:
+
+- **EXT 20–29 numbered off by one.** Shogun's first instruction,
+  `@mouse_window -1`, ran as `@read_mouse` and crashed writing to $FFFF.
+  Journey's "crashes without Blorb" test was changed to check that it
+  starts.
+- **Missing V6 opcodes.** Added `@push_stack`, `@pop_stack`,
+  `@print_form`, `@make_menu` and the store form of V6 `@pull`. Branch
+  decoding for EXT 6/24/27 was fixed in both the interpreter and the
+  disassembler. Covered by `V6StackAndFormOpcodeTests`.
+- **ZSCII 11 (sentence space).** It now prints as a space on screen and
+  in transcripts.
+
+Key findings from the disassembly:
+
+- Scores are per scene. Each scored action clears attribute 12 on a
+  "token" object and adds 5 points. The scene maxima come from a table
+  indexed by scene number.
+- Some tokens are created mid-scene and last only one turn: watching
+  Kiritsubo during Sazuko's fall, shouting *mizu* over Mariko, and
+  checking the sword belt before bowing to Ochiba.
+- The Osaka street maze is a 37×16 byte grid. A move runs along a
+  corridor to the next junction, so the route was planned with a BFS
+  over that grid.
+- Between scenes the game needs a keypress and then Enter at the
+  CONTINUE menu. The test sends these as `k` and `"\r"`.
 
 ---
 
